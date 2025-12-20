@@ -2,79 +2,64 @@ import { NextResponse } from 'next/server';
 import { sanityClientServer } from '@/lib/sanity';
 import crypto from 'crypto';
 
-// 🛡️ Forzamos ejecución dinámica para evitar cualquier caché de ventas
+// 🛡️ Forzamos ejecución dinámica para tiempo real
 export const dynamic = 'force-dynamic';
-
-function mapAndValidateVenta(payload) {
-    const mesa = payload.mesa || 'General';
-    const mesero = payload.mesero || 'No asignado'; // 🆕 Capturamos el mesero
-    const metodoPago = payload.metodoPago || 'efectivo';
-    const totalPagado = Number(payload.totalPagado) || 0;
-    
-    // Agregamos una _key a cada plato para evitar errores de validación en Sanity
-    const platos = (payload.platosVendidosV2 || []).map(item => ({
-        _key: crypto.randomUUID(), 
-        nombrePlato: item.nombrePlato,
-        cantidad: Number(item.cantidad) || 1,
-        precioUnitario: Number(item.precioUnitario) || 0,
-        subtotal: Number(item.subtotal) || 0,
-        _type: 'platoVendidoV2' 
-    }));
-    
-    const ordenId = payload.ordenId || null;
-
-    return {
-        venta: {
-            _type: 'venta',
-            folio: crypto.randomBytes(4).toString('hex').toUpperCase(),
-            mesa: mesa,
-            mesero: mesero, // 🆕 El mesero ahora queda persistido en el registro de venta
-            metodoPago: metodoPago,
-            totalPagado: totalPagado,
-            fecha: new Date().toISOString(),
-            platosVendidosV2: platos,
-        },
-        ordenId: ordenId
-    };
-}
+export const revalidate = 0;
 
 export async function POST(req) {
     try {
         const payload = await req.json();
-        const { venta, ordenId } = mapAndValidateVenta(payload);
+        
+        const mesa = payload.mesa || 'General';
+        const mesero = payload.mesero || 'Personal General';
+        const metodoPago = payload.metodoPago || 'efectivo';
+        const totalPagado = Number(payload.totalPagado) || 0;
+        const ordenId = payload.ordenId;
 
-        let transaction = sanityClientServer.transaction();
+        // Mapeo de platos con _key única para el reporte de ventas
+        const platosVenta = (payload.platosVendidosV2 || []).map(item => ({
+            _key: crypto.randomUUID(), 
+            nombrePlato: item.nombrePlato,
+            cantidad: Number(item.cantidad) || 1,
+            precioUnitario: Number(item.precioUnitario) || 0,
+            subtotal: Number(item.subtotal) || 0,
+            _type: 'platoVendidoV2' 
+        }));
 
-        // 1. Añadimos la creación de la venta
-        transaction = transaction.create(venta);
+        const objetoVenta = {
+            _type: 'venta',
+            folio: crypto.randomBytes(3).toString('hex').toUpperCase(),
+            mesa: mesa,
+            mesero: mesero,
+            metodoPago: metodoPago,
+            totalPagado: totalPagado,
+            fecha: new Date().toISOString(),
+            platosVendidosV2: platosVenta,
+        };
 
-        // 2. Si venía de una orden activa, la eliminamos EN LA MISMA TRANSACCIÓN
+        // Iniciamos transacción: Crear Venta y Borrar Orden Activa
+        let transaction = sanityClientServer.transaction().create(objetoVenta);
+
         if (ordenId) {
             transaction = transaction.delete(ordenId);
         }
 
         await transaction.commit();
 
-        return NextResponse.json(
-            { 
-                ok: true, 
-                message: 'Venta registrada y orden eliminada con éxito',
-                folio: venta.folio, 
-                mesa: venta.mesa,
-                mesero: venta.mesero // Confirmamos el mesero en la respuesta
-            },
-            { status: 201 }
-        );
+        return NextResponse.json({ 
+            ok: true, 
+            message: 'Venta registrada con éxito',
+            mesa: mesa,
+            mesero: mesero,
+            folio: objetoVenta.folio
+        }, { status: 201 });
 
     } catch (err) {
-        console.error('[API_VENTAS_FATAL_ERROR]:', err);
-        return NextResponse.json(
-            { 
-                ok: false, 
-                error: 'No se pudo completar la transacción de venta.',
-                details: err.message 
-            },
-            { status: 500 }
-        );
+        console.error('[FATAL_ERROR_VENTAS]:', err);
+        return NextResponse.json({ 
+            ok: false, 
+            error: 'Error en la transacción de venta',
+            details: err.message 
+        }, { status: 500 });
     }
 }

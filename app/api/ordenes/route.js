@@ -1,30 +1,70 @@
-// Archivo: talanquera-frontend/app/api/ordenes/route.js
-
 import { NextResponse } from 'next/server';
 import { sanityClientServer } from '@/lib/sanity';
+import crypto from 'crypto';
 
-// Handler para GET (Obtener TODAS las órdenes activas)
-export async function GET(request) {
+// 🚀 VITAL: Evita que Netlify cachee la lista de órdenes
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+// Handler para GET: Obtener todas las órdenes para el botón "ÓRDENES (X)"
+export async function GET() {
     try {
-        // Consulta GROQ: Trae la lista de todas las órdenes activas
-        const query = `*[_type == "ordenActiva"] {
+        const query = `*[_type == "ordenActiva"] | order(fechaCreacion desc) {
             _id,
             mesa,
-            fechaCreacion
-            // ... otros campos que necesites para la lista
+            mesero,
+            fechaCreacion,
+            platosOrdenados
         }`;
         
         const ordenes = await sanityClientServer.fetch(query);
-
-        // Importante: Debe devolver un JSON, incluso si la lista está vacía (cuerpo: [])
         return NextResponse.json(ordenes); 
 
     } catch (err) {
-        console.error('Error al obtener la lista de órdenes:', err);
-        return NextResponse.json(
-            { error: 'Error al obtener las órdenes.' },
-            { status: 500 }
-        );
+        console.error('Error GET /api/ordenes:', err);
+        return NextResponse.json({ error: 'Error al obtener órdenes' }, { status: 500 });
     }
 }
-// Puedes agregar la función POST aquí si se usa para crear nuevas órdenes.
+
+// Handler para POST: Guardar o Actualizar una orden
+export async function POST(req) {
+    try {
+        const body = await req.json();
+        const { mesa, mesero, platosOrdenados, ordenId } = body;
+
+        // Preparamos los platos con su _key para Sanity
+        const platosConKey = platosOrdenados.map(p => ({
+            ...p,
+            _key: p._key || crypto.randomUUID(),
+            _type: 'platoOrdenado' 
+        }));
+
+        const datosOrden = {
+            _type: 'ordenActiva',
+            mesa: mesa || 'Mesa Sin Nombre',
+            mesero: mesero || 'Mesero',
+            platosOrdenados: platosConKey,
+            fechaCreacion: new Date().toISOString(),
+        };
+
+        let resultado;
+
+        if (ordenId) {
+            // ACTUALIZAR ORDEN EXISTENTE
+            resultado = await sanityClientServer
+                .patch(ordenId)
+                .set(datosOrden)
+                .commit();
+        } else {
+            // CREAR NUEVA ORDEN
+            resultado = await sanityClientServer.create(datosOrden);
+        }
+
+        // Devolvemos el objeto real para que el alert NO diga "undefined"
+        return NextResponse.json(resultado, { status: 201 });
+
+    } catch (err) {
+        console.error('Error POST /api/ordenes:', err);
+        return NextResponse.json({ error: err.message }, { status: 500 });
+    }
+}
