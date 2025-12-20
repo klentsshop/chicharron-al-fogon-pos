@@ -114,6 +114,16 @@ export default function MenuPanel() {
         }
     };
 
+    const solicitarAccesoAdmin = () => {
+    const pin = prompt("🔑 Ingrese PIN de Administrador para ver Reportes Globales:");
+    if (pin === "0111") {
+        cargarReporteAdmin();
+        setMostrarAdmin(true);
+    } else {
+        alert("❌ PIN Administrativo incorrecto. Acceso denegado.");
+    }
+};
+
     const guardarOrden = async () => {
     if (cart.length === 0) return;
     let mesa = ordenMesa;
@@ -501,6 +511,19 @@ export default function MenuPanel() {
                         >
                             REPORTE
                         </button>
+                        <button
+                         onClick={solicitarAccesoAdmin}
+                         style={{ padding: '8px 12px', backgroundColor: '#374151', color: 'white', border: 'none', borderRadius: '5px', fontSize: '0.8em' }}
+                        >
+                         ADMIN
+                        </button>
+                         <button
+                         onClick={registrarGasto}
+                         style={{ padding: '8px 12px', backgroundColor: '#F59E0B', color: 'white', border: 'none', borderRadius: '5px', fontSize: '0.8em' }}
+                         >
+                         ➕ GASTO
+                         </button>
+    
                     </div>
                 </div>
 
