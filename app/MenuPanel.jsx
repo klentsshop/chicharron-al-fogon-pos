@@ -349,8 +349,20 @@ export default function MenuPanel() {
 
                 /* MÓVIL - INTERFAZ TIPO RAPPI */
                 @media (max-width: 768px) {
-                    .pos-layout { flex-direction: column !important; position: relative; }
-                    
+                    .pos-layout { 
+                  flex-direction: column !important; 
+                  position: relative; 
+                  height: 100vh; 
+                  overflow: hidden; 
+                  }
+
+                 .menu-panel { 
+                 width: 100% !important; 
+                 height: 100%; 
+                 overflow-y: auto; 
+                 padding-bottom: 130px; 
+                 -webkit-overflow-scrolling: touch; 
+                 }
                     /* Ocultamos el carrito lateral y lo volvemos un modal deslizante */
                     .ticket-panel {
                         position: fixed !important;
@@ -369,9 +381,6 @@ export default function MenuPanel() {
                     }
 
                     .ticket-panel.show-mobile { bottom: 0 !important; }
-
-                    .menu-panel { width: 100% !important; padding-bottom: 100px; }
-
                     /* Arreglo de la cuadrícula de productos para que se vean bien */
                     .products-grid { 
                         grid-template-columns: repeat(2, 1fr) !important; 
