@@ -115,44 +115,54 @@ export default function MenuPanel() {
     };
 
     const guardarOrden = async () => {
-        if (cart.length === 0) return;
-        let mesa = ordenMesa;
-        if (!mesa) {
-            mesa = prompt("Mesa o Cliente para guardar orden:", "Mesa 1");
-            if (!mesa) return;
-            if (!ordenActivaId) {
-                const mesaExistente = ordenesActivas.find((o) => o.mesa.toLowerCase() === mesa.toLowerCase());
-                if (mesaExistente) {
-                    const confirmar = confirm(`La [${mesa}] ya tiene una orden activa. ¿Deseas cargarla?`);
-                    if (confirmar) { cargarOrden(mesaExistente._id); return; } else { return; }
-                }
+    if (cart.length === 0) return;
+    let mesa = ordenMesa;
+    if (!mesa) {
+        mesa = prompt("Mesa o Cliente para guardar orden:", "Mesa 1");
+        if (!mesa) return;
+        if (!ordenActivaId) {
+            const mesaExistente = ordenesActivas.find((o) => o.mesa.toLowerCase() === mesa.toLowerCase());
+            if (mesaExistente) {
+                const confirmar = confirm(`La [${mesa}] ya tiene una orden activa. ¿Deseas cargarla?`);
+                if (confirmar) { cargarOrden(mesaExistente._id); return; } else { return; }
             }
         }
-        let meseroActual = nombreMesero; 
-        if (!meseroActual || meseroActual === "Mesero") {
-            meseroActual = prompt("👤 Nombre del Mesero que atiende:", "Diana");
-            if (!meseroActual) return;
-            setNombreMesero(meseroActual);
-        }
-        const ordenPayload = {
-            mesa,
-            mesero: meseroActual, 
-            ordenId: ordenActivaId || null,
-            platosOrdenados: cart.map(item => ({
-                nombrePlato: item.nombre,
-                cantidad: item.cantidad,
-                precioUnitario: item.precio,
-                subtotal: cleanPrice(item.precio) * item.cantidad,
-            })),
-        };
-        try {
-            const data = await apiGuardar(ordenPayload);
-            alert(`✅ Orden de ${data.mesa} (Mesero: ${meseroActual}) guardada.`);
-            clearCart(); setOrdenActivaId(null); setOrdenMesa(null); setNombreMesero(null); setMostrarListaOrdenes(false);
-            setMostrarCarritoMobile(false); // Cierra carrito en móvil tras guardar
-        } catch (error) { alert(`❌ Error: ${error.message}`); }
+    }
+    let meseroActual = nombreMesero; 
+    if (!meseroActual || meseroActual === "Mesero") {
+        meseroActual = prompt("👤 Nombre del Mesero que atiende:", "Diana");
+        if (!meseroActual) return;
+        setNombreMesero(meseroActual);
+    }
+    const ordenPayload = {
+        mesa,
+        mesero: meseroActual, 
+        ordenId: ordenActivaId || null,
+        platosOrdenados: cart.map(item => ({
+            nombrePlato: item.nombre,
+            cantidad: item.cantidad,
+            precioUnitario: item.precio,
+            subtotal: cleanPrice(item.precio) * item.cantidad,
+        })),
     };
-
+    try {
+        const data = await apiGuardar(ordenPayload);
+        
+        // --- LA MEJORA CLAVE AQUÍ ---
+        await refreshOrdenes(); // Refresca la lista de órdenes antes del alert
+        
+        alert(`✅ Orden de ${data.mesa} (Mesero: ${meseroActual}) guardada.`);
+        
+        clearCart(); 
+        setOrdenActivaId(null); 
+        setOrdenMesa(null); 
+        setNombreMesero(null); 
+        setMostrarListaOrdenes(false);
+        setMostrarCarritoMobile(false); 
+    } catch (error) { 
+        alert(`❌ Error: ${error.message}`); 
+    }
+};
    const cargarOrden = async (ordenId) => {
     try {
         const res = await fetch('/api/ordenes/get', {
@@ -643,8 +653,8 @@ export default function MenuPanel() {
             )}
 
             {mostrarAdmin && (
-                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 8000 }}>
-                    <div style={{ background: 'white', padding: '30px', borderRadius: '15px', width: '95%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }}>
+                <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '15px', zIndex: 9999 }}>
+                    <div style={{ background: 'white', padding: '25px', borderRadius: '15px', width: '100%', maxWidth: '550px', maxHeight: '90vh', overflowY: 'auto', position: 'relative' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}>
                             <h2 style={{ margin: 0 }}>💼 Panel Administrativo</h2>
                             <button onClick={() => setMostrarAdmin(false)} style={{ fontSize: '1.5em', border: 'none', background: 'none' }}>×</button>
