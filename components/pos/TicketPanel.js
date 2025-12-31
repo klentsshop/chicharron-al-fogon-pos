@@ -1,10 +1,17 @@
+'use client';
+
 import React, { useState, useEffect } from 'react';
 import { formatPrecioDisplay, METODOS_PAGO } from '@/lib/utils';
 
-// Componente interno para blindar el foco del input de comentarios
+/**
+ * 🛡️ COMPONENTE INTERNO: InputComentario
+ * Maneja el estado local del texto para evitar saltos del cursor.
+ * Sincroniza con el CartContext al perder el foco (onBlur) o dar Enter.
+ */
 function InputComentario({ item, actualizarComentario }) {
     const [texto, setTexto] = useState(item.comentario || '');
 
+    // Sincroniza si el valor cambia externamente (ej: al cargar una mesa guardada)
     useEffect(() => {
         setTexto(item.comentario || '');
     }, [item.comentario]);
@@ -12,17 +19,27 @@ function InputComentario({ item, actualizarComentario }) {
     return (
         <input 
             type="text"
-            placeholder="📝 Notas para cocina..."
+            placeholder="📝 Notas para cocina (Ej: Sin sopa)..."
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
-            onBlur={() => actualizarComentario(item._id, texto)}
+            // ✅ Al salir del cuadro, guarda el comentario en el CartContext
+            onBlur={() => actualizarComentario(item.lineId, texto)}
             onKeyDown={(e) => {
-                if (e.key === 'Enter') actualizarComentario(item._id, texto);
+                if (e.key === 'Enter') {
+                    actualizarComentario(item.lineId, texto);
+                    e.target.blur(); // Quita el foco al dar Enter
+                }
             }}
             style={{ 
-                marginTop: '6px', padding: '5px 8px', fontSize: '0.75rem', 
-                border: '1px dashed #D1D5DB', borderRadius: '4px', 
-                backgroundColor: 'white', color: '#4B5563', outline: 'none', width: '100%'
+                marginTop: '6px', 
+                padding: '5px 8px', 
+                fontSize: '0.75rem', 
+                border: '1px dashed #D1D5DB', 
+                borderRadius: '4px', 
+                backgroundColor: 'white', 
+                color: '#4B5563', 
+                outline: 'none', 
+                width: '100%'
             }}
         />
     );
@@ -61,8 +78,10 @@ export default function TicketPanel({
                             margin: 0, 
                             cursor: 'pointer', 
                             fontWeight: 'bold',
+                            // ✅ Color cambia a verde si la sesión está persistente
                             color: esModoCajero ? '#10B981' : 'white' 
                         }}>
+                        {/* ✅ Muestra CAJERO si la sesión está activa */}
                         PEDIDO {ordenMesa ? `(${ordenMesa})` : 'ACTUAL'} ({esModoCajero ? 'CAJERO' : 'MESERO'})
                     </h2>
 
@@ -82,6 +101,8 @@ export default function TicketPanel({
                         }}
                     >
                         <option value="">👤 Mesero...</option>
+                        {/* ✅ Opción automática para cuando el cajero atiende rápido */}
+                        {esModoCajero && <option value="Caja">💰 Caja (Auto)</option>}
                         {listaMeseros?.map(m => (
                             <option key={m._id} value={m.nombre}>{m.nombre}</option>
                         ))}
@@ -105,7 +126,7 @@ export default function TicketPanel({
                     )}
 
                     <button 
-                        onClick={() => esModoCajero ? generarCierreDia() : alert("🔒 Solo cajero")} 
+                        onClick={() => esModoCajero ? generarCierreDia() : alert("🔒 Solo el cajero puede ver reportes")} 
                         style={{ 
                             flex: 1, padding: '6px 2px', fontSize: '0.6rem', 
                             backgroundColor: esModoCajero ? '#EF4444' : '#4B5563', 
@@ -135,28 +156,36 @@ export default function TicketPanel({
                 padding: '10px 15px',
                 background: '#f9fafb'
             }}>
-                {cart.length === 0 ? <p style={{ textAlign: 'center', color: '#9CA3AF', marginTop: '20px' }}>Carrito vacío</p> : 
+                {cart.length === 0 ? (
+                    <p style={{ textAlign: 'center', color: '#9CA3AF', marginTop: '20px' }}>No hay productos seleccionados</p>
+                ) : (
                     cart.map(item => (
-                        <div key={item._id} style={{ display: 'flex', flexDirection: 'column', padding: '10px 0', borderBottom: '1px solid #eee' }}>
+                        <div key={item.lineId} style={{ display: 'flex', flexDirection: 'column', padding: '10px 0', borderBottom: '1px solid #eee' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                 <div style={{ flex: 1 }}>
-                                    <strong style={{ fontSize: '0.9rem', color: '#111827' }}>{item.nombre}</strong><br/>
+                                    <strong style={{ fontSize: '0.9rem', color: '#111827' }}>
+                                        {item.nombre || "Plato..."}
+                                    </strong><br/>
                                     <small style={{ fontSize: '0.8rem', color: '#6B7280' }}>
-                                        ${formatPrecioDisplay(item.precio).toLocaleString('es-CO')} x {item.cantidad}
+                                        ${formatPrecioDisplay(item.precioNum || item.precio || 0).toLocaleString('es-CO')} x {item.cantidad}
                                     </small>
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                    <strong style={{ fontSize: '0.9rem' }}>${(cleanPrice(item.precio) * item.cantidad).toLocaleString('es-CO')}</strong>
-                                    <button onClick={() => quitarDelCarrito(item._id)} 
-                                        style={{ color: '#EF4444', border: '1px solid #EF4444', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer', background: 'none' }}>-</button>
+                                    <strong style={{ fontSize: '0.9rem' }}>
+                                        ${(cleanPrice(item.precioNum || item.precio || 0) * item.cantidad).toLocaleString('es-CO')}
+                                    </strong>
+                                    <button onClick={() => quitarDelCarrito(item.lineId)} 
+                                        style={{ color: '#EF4444', border: '1px solid #EF4444', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer', background: 'none' }}>
+                                        -
+                                    </button>
                                 </div>
                             </div>
 
-                            {/* Campo de Notas Integrado */}
+                            {/* Componente de Notas para Cocina con estado local */}
                             <InputComentario item={item} actualizarComentario={actualizarComentario} />
                         </div>
                     ))
-                }
+                )}
             </div>
 
             {/* 4. PIE DE PÁGINA - PAGOS, TOTAL Y ACCIONES (FIJO) */}
@@ -202,6 +231,7 @@ export default function TicketPanel({
                         {ordenActivaId ? 'ACTUALIZAR' : 'GUARDAR'}
                     </button>
                     
+                    {/* ✅ Solo el Cajero puede ver este botón (ahora persiste sesión) */}
                     {esModoCajero && (
                         <button onClick={cobrarOrden} 
                             style={{ flex: 1, padding: '12px', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '800', fontSize: '0.85rem', cursor: 'pointer' }}>

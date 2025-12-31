@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { client } from '@/lib/sanity';
 import { useCart } from './context/CartContext';
 import { useOrdenes } from './hooks/useOrdenes';
@@ -16,7 +16,8 @@ import styles from './MenuPanel.module.css';
 export default function MenuPanel() {
     const { 
         items: cart, total, addProduct: agregarAlCarrito, decrease: quitarDelCarrito, 
-        metodoPago, setMetodoPago, setCartFromOrden, clear: clearCart, cleanPrice 
+        metodoPago, setMetodoPago, setCartFromOrden, clear: clearCart, cleanPrice, 
+        actualizarComentario 
     } = useCart();
 
     const { 
@@ -54,41 +55,64 @@ export default function MenuPanel() {
     const [mostrarCarritoMobile, setMostrarCarritoMobile] = useState(false);
     const [listaMeseros, setListaMeseros] = useState([]);
 
+    // ✅ CARGA DE DATOS INICIAL Y SESIÓN DE CAJERO
     useEffect(() => {
         const fetchPlatos = async () => {
             try {
                 const data = await client.fetch(`*[_type == "plato"] | order(nombre asc) { _id, nombre, precio, categoria, imagen }`);
                 setPlatos(data);
                 setCargando(false);
-            } catch (error) { console.error("Error cargando platos:", error); }
+            } catch (error) { console.error("Error platos:", error); }
         };
 
         const fetchMeseros = async () => {
             try {
                 const data = await client.fetch(`*[_type == "mesero"] | order(nombre asc)`);
                 setListaMeseros(data);
-            } catch (error) { console.error("Error cargando meseros:", error); }
+            } catch (error) { console.error("Error meseros:", error); }
         };
+
+        // 🔐 RECUPERAR SESIÓN DE CAJERO PERSISTENTE
+        const sesionCajero = sessionStorage.getItem('talanquera_cajero_activa');
+        if (sesionCajero === 'true') {
+            setEsModoCajero(true);
+            // Si es cajero y no hay mesero, ponemos "Caja" por defecto para agilidad
+            if (!nombreMesero) setNombreMesero("Caja");
+        }
 
         fetchPlatos();
         fetchMeseros();
     }, []);
 
     const solicitarAccesoCajero = () => {
-        const pin = prompt("🔐 Ingrese PIN de Seguridad para habilitar COBRO:");
-        if (pin === "1234") { setEsModoCajero(!esModoCajero); } 
+        // Si ya es cajero, esto actúa como "Cerrar Sesión" para seguridad
+        if (esModoCajero) {
+            if (confirm("¿Cerrar sesión de Cajero y volver a modo Mesero?")) {
+                setEsModoCajero(false);
+                sessionStorage.removeItem('talanquera_cajero_activa');
+                setNombreMesero(null);
+            }
+            return;
+        }
+
+        const pin = prompt("🔐 PIN para habilitar COBRO:");
+        if (pin === "1234") { 
+            setEsModoCajero(true);
+            sessionStorage.setItem('talanquera_cajero_activa', 'true');
+            if (!nombreMesero) setNombreMesero("Caja"); // Autocompletado para agilidad
+        } 
         else { alert("❌ PIN Incorrecto."); }
     };
 
     const solicitarAccesoAdmin = () => {
-        const pin = prompt("🔑 Ingrese PIN de Administrador:");
+        const pin = prompt("🔑 PIN de Administrador:");
         if (pin === "0111") { setMostrarAdmin(true); cargarReporteAdmin(); } 
-        else { alert("❌ PIN Administrativo incorrecto."); }
+        else { alert("❌ PIN administrativo incorrecto."); }
     };
 
     const registrarGasto = async () => {
-        const desc = prompt("¿En qué se gastó? (Ej: Gaseosas)");
-        const valor = prompt("¿Cuánto costó?");
+        const desc = prompt("¿Descripción del gasto?");
+        const valor = prompt("¿Monto?");
         if (!desc || !valor || isNaN(valor)) return;
         try {
             const res = await fetch('/api/gastos', {
@@ -96,87 +120,165 @@ export default function MenuPanel() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ descripcion: desc, monto: valor })
             });
-            if (res.ok) alert("✅ Gasto guardado con éxito.");
-        } catch (error) { alert("❌ Error al guardar gasto."); }
+            if (res.ok) alert("✅ Gasto guardado.");
+        } catch (error) { alert("❌ Error."); }
     };
 
+    // ✅ CARGAR ORDEN (CON SEGURO)
+    const cargarOrden = async (id) => {
+        try {
+            const res = await fetch('/api/ordenes/get', { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify({ ordenId: id }) 
+            });
+            const o = await res.json();
+            
+            if (o && o.platosOrdenados) {
+                setOrdenActivaId(o._id); 
+                setOrdenMesa(o.mesa); 
+                setNombreMesero(o.mesero || (esModoCajero ? "Caja" : null)); 
+
+                setCartFromOrden(o.platosOrdenados); 
+                setMostrarListaOrdenes(false);
+                setMostrarCarritoMobile(true);
+            }
+        } catch(e) { 
+            console.error("Error crítico carga:", e);
+        }
+    };
+
+    // ✅ GUARDAR ORDEN
     const guardarOrden = async () => {
         if (cart.length === 0) return;
-        let mesa = ordenMesa || prompt("Mesa o Cliente para guardar orden:", "Mesa 1");
+        
+        // Si es modo cajero y no hay mesa, asumimos "Mostrador" para no perder tiempo con prompts
+        let mesaDefault = esModoCajero ? "Mostrador" : "Mesa 1";
+        let mesa = ordenMesa || prompt("Mesa o Cliente:", mesaDefault);
 
         if (!ordenActivaId && mesa) {
             const mesaExistente = ordenesActivas.find((o) => o.mesa.toLowerCase() === mesa.toLowerCase());
             if (mesaExistente) {
-                const confirmar = confirm(`La [${mesa}] ya tiene una orden activa. ¿Deseas cargarla?`);
-                if (confirmar) { cargarOrden(mesaExistente._id); return; } else { return; }
+                if (confirm(`La [${mesa}] tiene orden activa. ¿Cargarla?`)) { 
+                    cargarOrden(mesaExistente._id); 
+                    return; 
+                } else return;
             }
         }
 
-        if (!nombreMesero) {
-            alert("⚠️ Por favor, selecciona un mesero en la lista antes de guardar la orden.");
+        // Si no hay mesero pero es cajero, asignamos "Caja" automáticamente
+        let meseroFinal = nombreMesero;
+        if (!meseroFinal && esModoCajero) meseroFinal = "Caja";
+
+        if (!meseroFinal) {
+            alert("⚠️ Seleccione mesero antes de guardar.");
             return; 
         }
-
-        if (!mesa) return;
 
         try {
             await apiGuardar({ 
                 mesa, 
-                mesero: nombreMesero, 
+                mesero: meseroFinal, 
                 ordenId: ordenActivaId, 
                 platosOrdenados: cart.map(i => ({ 
+                    _key: i.lineId, 
                     nombrePlato: i.nombre, 
                     cantidad: i.cantidad, 
-                    precioUnitario: i.precio, 
-                    subtotal: cleanPrice(i.precio) * i.cantidad,
-                    comentario: i.comentario || ""
+                    precioUnitario: i.precioNum || cleanPrice(i.precio), 
+                    subtotal: (i.precioNum || cleanPrice(i.precio)) * i.cantidad,
+                    comentario: i.comentario || "" 
                 })) 
             });
 
             await refreshOrdenes();
-            alert(`✅ Orden de ${mesa} guardada.`);
-            clearCart(); 
+            alert(`✅ Orden guardada.`);
+            
             setOrdenActivaId(null); 
             setOrdenMesa(null); 
-            setNombreMesero(null);
+            // NO limpiamos el nombre del mesero si es Cajero para mantener agilidad
+            if (!esModoCajero) setNombreMesero(null);
+            
             setMostrarCarritoMobile(false);
-        } catch (e) { alert("❌ Error al guardar orden."); }
+            clearCart(); 
+
+        } catch (e) { alert("❌ Error al guardar."); }
     };
 
-    const actualizarComentario = (id, nuevoComentario) => {
-    // Usamos el ID de Sanity para encontrar el plato exacto y actualizar su nota
-    setCart(prevCart => 
-        prevCart.map(item => 
-            item._id === id ? { ...item, comentario: nuevoComentario } : item
-        )
-    );
-};
+    // ✅ CANCELAR / ELIMINAR ORDEN
+    const cancelarOrden = async () => {
+        if (!ordenActivaId) return;
+        if (!esModoCajero) { alert("🔒 PIN de Cajero requerido."); return; }
+        if (confirm(`⚠️ ¿Eliminar orden de ${ordenMesa}?`)) {
+            try {
+                await apiEliminar(ordenActivaId);
+                clearCart(); 
+                setOrdenActivaId(null); setOrdenMesa(null);
+                if (!esModoCajero) setNombreMesero(null);
+                await refreshOrdenes();
+                alert("🗑️ Eliminada.");
+            } catch (error) { alert("❌ Error."); }
+        }
+    };
 
+    // ✅ COBRAR ORDEN
+   // ✅ COBRAR ORDEN (Actualizado: Permite cobrar directamente sin guardar primero)
     const cobrarOrden = async () => {
-        if (!ordenActivaId || !esModoCajero) return;
-        if (!confirm(`💰 ¿Confirmar cobro de $${total.toLocaleString('es-CO')}?`)) return;
+        // 1. Solo validamos que haya platos y que sea Cajero. 
+        // Ya no obligamos a que ordenActivaId exista.
+        if (cart.length === 0 || !esModoCajero) return;
+
+        if (!confirm(`💰 ¿Cobrar $${total.toLocaleString('es-CO')}?`)) return;
+        
+        // 2. Definimos quién atiende y qué mesa es (si no hay mesa, es Mostrador)
+        const meseroFinal = nombreMesero || "Caja";
+        const mesaFinal = ordenMesa || "Mostrador";
+
         try {
-            await fetch('/api/ventas', { 
+            const res = await fetch('/api/ventas', { 
                 method: 'POST', 
                 headers: { 'Content-Type': 'application/json' }, 
                 body: JSON.stringify({ 
-                    mesa: ordenMesa, mesero: nombreMesero, metodoPago, 
-                    totalPagado: total, ordenId: ordenActivaId, 
+                    mesa: mesaFinal, 
+                    mesero: meseroFinal, 
+                    metodoPago, 
+                    totalPagado: total, 
+                    // Si es una mesa guardada pasamos el ID, si es venta rápida pasamos null
+                    ordenId: ordenActivaId || null, 
                     platosVendidosV2: cart.map(i => ({ 
-                        nombrePlato: i.nombre, cantidad: i.cantidad, 
-                        precioUnitario: i.precio, subtotal: cleanPrice(i.precio) * i.cantidad,
+                        nombrePlato: i.nombre, 
+                        cantidad: i.cantidad, 
+                        precioUnitario: i.precioNum || cleanPrice(i.precio), 
+                        subtotal: (i.precioNum || cleanPrice(i.precio)) * i.cantidad,
                         comentario: i.comentario || "" 
                     })) 
                 }) 
             });
-            await apiEliminar(ordenActivaId);
-            alert(`✅ Venta Exitosa.`);
-            clearCart(); setOrdenActivaId(null); setOrdenMesa(null); 
-            setNombreMesero(null); setEsModoCajero(false); setMostrarCarritoMobile(false);
-            await refreshOrdenes();
-        } catch (e) { alert('❌ Error crítico en el proceso de pago.'); }
+
+            if (res.ok) {
+                // 3. SOLO eliminamos de Sanity si la orden existía previamente
+                if (ordenActivaId) {
+                    await apiEliminar(ordenActivaId);
+                }
+
+                alert(`✅ Venta Exitosa.`);
+                
+                // 4. Limpieza de interfaz
+                clearCart();
+                setOrdenActivaId(null); 
+                setOrdenMesa(null); 
+                
+                // Refrescamos la lista de mesas activas por si acabamos de cerrar una
+                await refreshOrdenes();
+            } else {
+                alert('❌ Error: El servidor no pudo procesar la venta.');
+            }
+        } catch (e) { 
+            console.error("Error en cobro:", e);
+            alert('❌ Error de conexión al procesar el pago.'); 
+        }
     };
 
+    // --- REPORTES ---
     const generarCierreDia = async () => {
         setCargandoReporte(true);
         setMostrarReporte(true);
@@ -194,7 +296,7 @@ export default function MenuPanel() {
             });
             setDatosReporte({ ventas: totalV, gastos: gastos.reduce((acc, g) => acc + (Number(g.monto) || 0), 0), productos: prod });
             setListaGastosDetallada(gastos);
-        } catch (e) { alert("❌ Error al generar reporte."); } 
+        } catch (e) { alert("❌ Error reporte."); } 
         finally { setCargandoReporte(false); }
     };
 
@@ -214,43 +316,11 @@ export default function MenuPanel() {
                 meseros[n] = (meseros[n] || 0) + (v.totalPagado || 0); 
             });
             setReporteAdmin({ ventasTotales: totalV, porMesero: meseros, gastos: gastos.reduce((acc, g) => acc + (Number(g.monto) || 0), 0) });
-        } catch (e) { alert("❌ Error al cargar datos administrativos."); } 
+        } catch (e) { alert("❌ Error admin."); } 
         finally { setCargandoAdmin(false); }
     };
 
-    const cargarOrden = async (id) => {
-        try {
-            const res = await fetch('/api/ordenes/get', { 
-                method: 'POST', 
-                headers: { 'Content-Type': 'application/json' }, 
-                body: JSON.stringify({ ordenId: id }) 
-            });
-            const o = await res.json();
-            clearCart();
-            setCartFromOrden(o.platosOrdenados.map(p => ({ 
-                nombrePlato: p.nombrePlato, 
-                precioUnitario: p.precioUnitario, 
-                cantidad: p.cantidad,
-                comentario: p.comentario || "" 
-            })));
-            setOrdenActivaId(o._id); setOrdenMesa(o.mesa); setNombreMesero(o.mesero); setMostrarListaOrdenes(false);
-        } catch(e) { alert("❌ Esta orden ya no está disponible."); }
-    };
-
-    const cancelarOrden = async () => {
-        if (!ordenActivaId) return;
-        if (!esModoCajero) { alert("🔒 Solo el cajero con PIN puede eliminar órdenes activas."); return; }
-        const confirmar = confirm(`⚠️ ¿ESTÁS SEGURO? \nVas a eliminar permanentemente la orden de ${ordenMesa}.`);
-        if (confirmar) {
-            try {
-                await apiEliminar(ordenActivaId);
-                clearCart(); setOrdenActivaId(null); setOrdenMesa(null); setNombreMesero(null);
-                await refreshOrdenes();
-                alert("🗑️ Orden eliminada correctamente.");
-            } catch (error) { alert("❌ Error al intentar eliminar."); }
-        }
-    };
-
+    // --- IMPRESIÓN ---
     const imprimirTicketMesa = () => {
         if (cart.length === 0) return;
         document.body.classList.add('imprimiendo-cliente');
@@ -268,19 +338,15 @@ export default function MenuPanel() {
     return (
         <div className={styles.mainWrapper}>
             <div className={styles.posLayout}>
-                {/* 1. CSS IMPRESIÓN INTELIGENTE */}
                 <style dangerouslySetInnerHTML={{ __html: `
                     #ticket-print, #comanda-print { position: fixed; top: -5000px; left: -5000px; width: 80mm; }
                     @media print {
                         @page { size: 80mm auto !important; margin: 0 !important; }
                         body * { visibility: hidden !important; }
-                        
                         body.imprimiendo-cliente #ticket-print, 
                         body.imprimiendo-cliente #ticket-print * { visibility: visible !important; }
-                        
                         body.imprimiendo-cocina #comanda-print, 
                         body.imprimiendo-cocina #comanda-print * { visibility: visible !important; }
-
                         #ticket-print, #comanda-print { 
                             position: absolute !important; left: 0 !important; top: 0 !important; 
                             width: 74mm !important; padding: 2mm !important; margin: 0 !important;
@@ -317,12 +383,11 @@ export default function MenuPanel() {
 
                 {cart.length > 0 && !mostrarCarritoMobile && (
                     <button className={styles.rappiCartBtn} onClick={() => setMostrarCarritoMobile(true)}>
-                        <span>🛒 Ver Pedido ({cart.reduce((acc, item) => acc + item.cantidad, 0)})</span>
+                        <span>🛒 Pedido ({cart.reduce((acc, item) => acc + item.cantidad, 0)})</span>
                         <span>${total.toLocaleString('es-CO')}</span>
                     </button>
                 )}
 
-                {/* TICKET CLIENTE */}
                 <div id="ticket-print">
                     <div style={{ textAlign: 'center', width: '100%' }}>
                         <h2 style={{ margin: '0 0 5px 0', fontSize: '1.4rem', fontWeight: 'bold' }}>ASADERO LA TALANQUERA</h2>
@@ -343,7 +408,7 @@ export default function MenuPanel() {
                                     <tr key={idx}>
                                         <td style={{ textAlign: 'left' }}>{item.cantidad}</td>
                                         <td style={{ textAlign: 'left' }}>{item.nombre}</td>
-                                        <td style={{ textAlign: 'right' }}>${(cleanPrice(item.precio) * item.cantidad).toLocaleString('es-CO')}</td>
+                                        <td style={{ textAlign: 'right' }}>${(cleanPrice(item.precioNum || item.precio) * item.cantidad).toLocaleString('es-CO')}</td>
                                     </tr>
                                 ))}
                             </tbody>
@@ -354,7 +419,6 @@ export default function MenuPanel() {
                     </div>
                 </div>
 
-                {/* COMANDA COCINA */}
                 <div id="comanda-print">
                     <div style={{ textAlign: 'center', width: '100%' }}>
                         <h2 style={{ fontSize: '1.8rem', margin: '0' }}>MESA: {ordenMesa || 'MOSTRADOR'}</h2>
@@ -377,7 +441,10 @@ export default function MenuPanel() {
                                 ))}
                             </tbody>
                         </table>
-                        <div style={{ borderTop: '1px solid black', marginTop: '10px', paddingTop: '5px', fontSize: '0.8rem' }}>
+                        <div 
+                            style={{ borderTop: '1px solid black', marginTop: '10px', paddingTop: '5px', fontSize: '0.8rem' }}
+                            suppressHydrationWarning 
+                        >
                             {new Date().toLocaleString('es-CO')}
                         </div>
                     </div>
@@ -389,7 +456,7 @@ export default function MenuPanel() {
                     MESAS ACTIVAS:
                 </div>
                 {ordenesActivas.length === 0 ? (
-                    <span style={{ color: '#d1fae5', fontSize: '0.9rem' }}>No hay mesas pendientes</span>
+                    <span style={{ color: '#d1fae5', fontSize: '0.9rem' }}>No hay mesas</span>
                 ) : (
                     ordenesActivas.map((orden) => (
                         <button 

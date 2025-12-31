@@ -1,188 +1,106 @@
 'use client';
 
-import React, {
-  createContext,
-  useContext,
-  useState,
-  useMemo
-} from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 
 const CartContext = createContext();
 
-/**
- * 🧹 Limpieza robusta de precios
- */
 const clean = (v) => {
-  if (typeof v === 'number' && Number.isFinite(v)) return v;
-  if (v === null || v === undefined) return 0;
-
-  const cleaned = String(v)
-    .replace(/\*\*/g, '')
-    .replace(/\*/g, '')
-    .replace(/\s/g, '')
-    .replace(/\$/g, '')
-    .replace(/\./g, '')
-    .replace(/,/g, '.');
-
-  const n = Number(cleaned);
+  if (typeof v === 'number') return v;
+  const n = Number(String(v).replace(/[^0-9.-]+/g, ""));
   return Number.isFinite(n) ? n : 0;
 };
 
-export function CartProvider({ children, initial = [] }) {
-  const [items, setItems] = useState(initial);
+export function CartProvider({ children }) {
+  const [items, setItems] = useState([]);
   const [metodoPago, setMetodoPago] = useState('efectivo');
 
-  /**
-   * 🔍 Setter con debug
-   */
-  const setItemsDebug = (updater) => {
-    setItems(prev => {
-      const next = typeof updater === 'function'
-        ? updater(prev)
-        : updater;
+  // 💾 1. Al iniciar, recuperar del navegador si existe algo
+  useEffect(() => {
+    const saved = sessionStorage.getItem('talanquera_cart');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.length > 0) setItems(parsed);
+    }
+  }, []);
 
-      console.log('[CartContext] ITEMS ACTUALIZADOS:', next);
-      try { window.__POS_CART_ITEMS = next; } catch (e) {}
-      return next;
-    });
-  };
+  // 💾 2. Cada vez que cambien los items, guardarlos en el navegador
+  useEffect(() => {
+    sessionStorage.setItem('talanquera_cart', JSON.stringify(items));
+  }, [items]);
 
-  /**
-   * ➕ USO NORMAL
-   * Click sobre producto (SIEMPRE suma +1)
-   */
   const addProduct = (product) => {
-    setItemsDebug(prev => {
-      const id = product._id;
-      const precioNum = clean(product.precio);
+    const precioNum = clean(product.precio);
+    setItems(prev => [...prev, {
+      ...product,
+      lineId: crypto.randomUUID(),
+      cantidad: 1,
+      precioNum,
+      subtotalNum: precioNum,
+      comentario: ''
+    }]);
+  };
 
-      const idx = prev.findIndex(p => p._id === id);
+ const setCartFromOrden = (platosOrdenados = []) => {
+    // 1. Limpiamos rastro viejo para que no se mezclen comentarios
+    sessionStorage.removeItem('talanquera_cart');
+    
+    const reconstruido = platosOrdenados.map(p => ({
+        lineId: p._key || crypto.randomUUID(),
+        _id: p._id || p.nombrePlato,
+        nombre: p.nombrePlato,
+        precio: clean(p.precioUnitario),
+        cantidad: Number(p.cantidad) || 1,
+        precioNum: clean(p.precioUnitario),
+        subtotalNum: clean(p.precioUnitario) * (Number(p.cantidad) || 1),
+        comentario: p.comentario || "" // ✅ Si viene null de Sanity, lo vuelve texto
+    }));
 
-      if (idx >= 0) {
-        const copy = [...prev];
-        const it = copy[idx];
-        const nuevaCant = it.cantidad + 1;
-
-        copy[idx] = {
-          ...it,
-          cantidad: nuevaCant,
-          subtotalNum: Math.round(precioNum * nuevaCant),
-        };
-
-        return copy;
-      }
-
-      return [
-        ...prev,
-        {
-          ...product,
-          _id: id,
-          cantidad: 1,
-          precioNum,
-          subtotalNum: Math.round(precioNum),
-        },
-      ];
+    console.log('✅ [CartContext] MESA CARGADA:', reconstruido);
+    
+    setItems(reconstruido);
+    // Guardamos la versión fresca de Sanity en la memoria del navegador
+    sessionStorage.setItem('talanquera_cart', JSON.stringify(reconstruido));
+  };
+  const actualizarComentario = (lineId, comentario) => {
+    setItems(prev => {
+      const nuevo = prev.map(it => it.lineId === lineId ? { ...it, comentario } : it);
+      sessionStorage.setItem('talanquera_cart', JSON.stringify(nuevo));
+      return nuevo;
     });
   };
 
-  /**
-   * 🔥 FUNCIÓN CLAVE
-   * Reconstruye el carrito COMPLETO desde una orden guardada
-   * (respeta cantidades y precios reales)
-   */
-  const setCartFromOrden = (platosOrdenados = []) => {
-    const reconstruido = platosOrdenados.map(p => {
-      const precioNum = clean(p.precioUnitario);
-    const cantidad = Number(p.cantidad) || 1;
-
-    return {
-      _id: p.nombrePlato, // 🔑 ID ESTABLE
-      nombre: p.nombrePlato,
-      precio: precioNum,
-      cantidad,
-      precioNum,
-      subtotalNum: precioNum * cantidad,
-    };
-  });
-  
-
-    console.log(
-      '[CartContext] CARRITO RECONSTRUIDO DESDE ORDEN:',
-      reconstruido
-    );
-
-    setItemsDebug(reconstruido);
-  };
-
-  /**
-   * ➖ Disminuir cantidad
-   */
-  const decrease = (id) => {
-    setItemsDebug(prev => {
-      const idx = prev.findIndex(i => i._id === id);
+  const decrease = (lineId) => {
+    setItems(prev => {
+      const idx = prev.findIndex(i => i.lineId === lineId);
       if (idx === -1) return prev;
-
       const copy = [...prev];
-      const it = copy[idx];
-
-      if (it.cantidad <= 1) {
+      if (copy[idx].cantidad <= 1) {
         copy.splice(idx, 1);
       } else {
-        const nuevaCant = it.cantidad - 1;
-        copy[idx] = {
-          ...it,
-          cantidad: nuevaCant,
-          subtotalNum: Math.round(it.precioNum * nuevaCant),
-        };
+        copy[idx] = { ...copy[idx], cantidad: copy[idx].cantidad - 1 };
       }
-
       return copy;
     });
   };
 
-  /**
-   * 🧹 Vaciar carrito
-   */
-  const clear = () => setItemsDebug([]);
+  const clear = () => {
+    setItems([]);
+    sessionStorage.removeItem('talanquera_cart');
+    sessionStorage.removeItem('talanquera_mesa'); // Limpia también rastro de mesa
+  };
 
-  /**
-   * 💰 Total del carrito
-   */
   const total = useMemo(() => {
-    const t = items.reduce(
-      (s, it) =>
-        s + clean(it.subtotalNum ?? it.precioNum * it.cantidad),
-      0
-    );
-
-    console.log('[CartContext] TOTAL RECALCULADO:', t);
-    try { window.__POS_CART_TOTAL = t; } catch (e) {}
-    return t;
+    return items.reduce((s, it) => s + (clean(it.precioNum) * it.cantidad), 0);
   }, [items]);
 
   return (
-    <CartContext.Provider
-      value={{
-        items,
-        addProduct,
-        setCartFromOrden, // 🔥 CLAVE
-        decrease,
-        clear,
-        total,
-        metodoPago,
-        setMetodoPago,
-        cleanPrice: clean,
-      }}
-    >
+    <CartContext.Provider value={{
+      items, addProduct, setCartFromOrden, decrease, clear, total,
+      metodoPago, setMetodoPago, actualizarComentario, cleanPrice: clean
+    }}>
       {children}
     </CartContext.Provider>
   );
 }
 
-export const useCart = () => {
-  const ctx = useContext(CartContext);
-  if (!ctx) {
-    throw new Error('useCart debe usarse dentro de CartProvider');
-  }
-  return ctx;
-};
+export const useCart = () => useContext(CartContext);

@@ -25,7 +25,8 @@ export async function POST(request) {
                     nombrePlato,
                     cantidad,
                     precioUnitario,
-                    subtotal
+                    subtotal,
+                    comentario  
                 }
             }
         `;

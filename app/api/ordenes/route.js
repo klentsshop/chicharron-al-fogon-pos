@@ -1,70 +1,53 @@
 import { NextResponse } from 'next/server';
 import { sanityClientServer } from '@/lib/sanity';
-import crypto from 'crypto';
 
-// 🚀 VITAL: Evita que Netlify cachee la lista de órdenes
 export const dynamic = 'force-dynamic';
-export const revalidate = 0;
 
-// Handler para GET: Obtener todas las órdenes para el botón "ÓRDENES (X)"
-export async function GET() {
-    try {
-        const query = `*[_type == "ordenActiva"] | order(fechaCreacion desc) {
-            _id,
-            mesa,
-            mesero,
-            fechaCreacion,
-            platosOrdenados
-        }`;
-        
-        const ordenes = await sanityClientServer.fetch(query);
-        return NextResponse.json(ordenes); 
-
-    } catch (err) {
-        console.error('Error GET /api/ordenes:', err);
-        return NextResponse.json({ error: 'Error al obtener órdenes' }, { status: 500 });
-    }
-}
-
-// Handler para POST: Guardar o Actualizar una orden
 export async function POST(req) {
     try {
         const body = await req.json();
         const { mesa, mesero, platosOrdenados, ordenId } = body;
 
-        // Preparamos los platos con su _key para Sanity
-        const platosConKey = platosOrdenados.map(p => ({
-            ...p,
-            _key: p._key || crypto.randomUUID(),
-            _type: 'platoOrdenado' 
+        // 🔥 MAPEO CRÍTICO: Aseguramos que 'comentario' llegue a Sanity
+        const platosParaSanity = platosOrdenados.map(p => ({
+            _key: p.lineId || Math.random().toString(36).substring(2, 11),
+            _type: 'platoOrdenado', // Asegúrate de que coincida con tu esquema
+            nombrePlato: p.nombre || p.nombrePlato,
+            cantidad: Number(p.cantidad) || 1,
+            precioUnitario: Number(p.precioNum || p.precioUnitario || 0),
+            subtotal: Number(p.subtotalNum || p.subtotal || 0),
+            // ✅ AQUÍ ESTABA EL ERROR: Se debe enviar como 'comentario'
+            comentario: p.comentario || "" 
         }));
 
-        const datosOrden = {
+        const doc = {
             _type: 'ordenActiva',
             mesa: mesa || 'Mesa Sin Nombre',
             mesero: mesero || 'Mesero',
-            platosOrdenados: platosConKey,
+            platosOrdenados: platosParaSanity,
             fechaCreacion: new Date().toISOString(),
         };
 
         let resultado;
-
         if (ordenId) {
-            // ACTUALIZAR ORDEN EXISTENTE
+            // Actualizar mesa existente
             resultado = await sanityClientServer
                 .patch(ordenId)
-                .set(datosOrden)
+                .set({
+                    mesa: doc.mesa,
+                    mesero: doc.mesero,
+                    platosOrdenados: doc.platosOrdenados
+                })
                 .commit();
         } else {
-            // CREAR NUEVA ORDEN
-            resultado = await sanityClientServer.create(datosOrden);
+            // Crear mesa nueva
+            resultado = await sanityClientServer.create(doc);
         }
 
-        // Devolvemos el objeto real para que el alert NO diga "undefined"
         return NextResponse.json(resultado, { status: 201 });
 
     } catch (err) {
-        console.error('Error POST /api/ordenes:', err);
+        console.error('[API_ORDENES_ERROR]:', err);
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
 }
