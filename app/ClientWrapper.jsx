@@ -1,10 +1,11 @@
-// Archivo: talanquera-frontend/app/ClientWrapper.jsx
 'use client'; 
 
 import React from 'react';
-import MenuPanel from './MenuPanel'; // IMPORTAMOS EL NOMBRE NUEVO
+// ✅ Usamos el alias @ para asegurar que siempre encuentre el MenuPanel 
+// sin importar si movemos este wrapper en el futuro.
+import MenuPanel from '@/app/MenuPanel'; 
 
 export default function ClientWrapper() {
-  // Asegúrate de que el componente que contiene el POS sea el que se renderiza aquí
+  // Este componente actúa como el puente entre el servidor y el cliente
   return <MenuPanel />; 
 }

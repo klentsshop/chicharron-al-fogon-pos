@@ -1,72 +1,94 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import { cleanPrice } from '@/lib/utils'; // ✅ Usamos tu utilidad global
 
 const CartContext = createContext();
-
-const clean = (v) => {
-  if (typeof v === 'number') return v;
-  const n = Number(String(v).replace(/[^0-9.-]+/g, ""));
-  return Number.isFinite(n) ? n : 0;
-};
 
 export function CartProvider({ children }) {
   const [items, setItems] = useState([]);
   const [metodoPago, setMetodoPago] = useState('efectivo');
+  const [propina, setPropina] = useState(0); // 👈 Estado para el % de propina
+  const [montoManual, setMontoManual] = useState(0); // 👈 Campo "Otro" (Monto manual)
 
-  // 💾 1. Al iniciar, recuperar del navegador si existe algo
+  // 💾 1. Al iniciar, recuperar del navegador si existe algo (Ahora localStorage)
   useEffect(() => {
-    const saved = sessionStorage.getItem('talanquera_cart');
+    const saved = localStorage.getItem('talanquera_cart');
     if (saved) {
       const parsed = JSON.parse(saved);
       if (parsed.length > 0) setItems(parsed);
     }
+
+    // 🔥 SINCRONIZACIÓN ENTRE PESTAÑAS:
+    const syncTabs = (e) => {
+      if (e.key === 'talanquera_cart') {
+        const newValue = e.newValue ? JSON.parse(e.newValue) : [];
+        setItems(newValue);
+      }
+    };
+    window.addEventListener('storage', syncTabs);
+    return () => window.removeEventListener('storage', syncTabs);
   }, []);
 
   // 💾 2. Cada vez que cambien los items, guardarlos en el navegador
   useEffect(() => {
-    sessionStorage.setItem('talanquera_cart', JSON.stringify(items));
+    localStorage.setItem('talanquera_cart', JSON.stringify(items));
   }, [items]);
 
   const addProduct = (product) => {
-    const precioNum = clean(product.precio);
-    setItems(prev => [...prev, {
-      ...product,
-      lineId: crypto.randomUUID(),
-      cantidad: 1,
-      precioNum,
-      subtotalNum: precioNum,
-      comentario: ''
-    }]);
+    const precioNum = cleanPrice(product.precio);
+    
+    setItems(prev => {
+      // 🧠 LÓGICA DE AGRUPACIÓN INTELIGENTE:
+      const existingIdx = prev.findIndex(it => 
+        it._id === product._id && (!it.comentario || it.comentario.trim() === '')
+      );
+
+      if (existingIdx !== -1) {
+        const copy = [...prev];
+        copy[existingIdx] = { 
+          ...copy[existingIdx], 
+          cantidad: copy[existingIdx].cantidad + 1,
+          subtotalNum: (copy[existingIdx].cantidad + 1) * precioNum
+        };
+        return copy;
+      }
+
+      return [...prev, {
+        ...product,
+        lineId: crypto.randomUUID(),
+        cantidad: 1,
+        precioNum,
+        subtotalNum: precioNum,
+        comentario: ''
+      }];
+    });
   };
 
- const setCartFromOrden = (platosOrdenados = []) => {
-    // 1. Limpiamos rastro viejo para que no se mezclen comentarios
-    sessionStorage.removeItem('talanquera_cart');
+  const setCartFromOrden = (platosOrdenados = []) => {
+    localStorage.removeItem('talanquera_cart');
     
     const reconstruido = platosOrdenados.map(p => ({
-        lineId: p._key || crypto.randomUUID(),
-        _id: p._id || p.nombrePlato,
-        nombre: p.nombrePlato,
-        precio: clean(p.precioUnitario),
-        cantidad: Number(p.cantidad) || 1,
-        precioNum: clean(p.precioUnitario),
-        subtotalNum: clean(p.precioUnitario) * (Number(p.cantidad) || 1),
-        comentario: p.comentario || "" // ✅ Si viene null de Sanity, lo vuelve texto
+      lineId: p._key || crypto.randomUUID(),
+      _id: p._id || p.nombrePlato,
+      nombre: p.nombrePlato,
+      precio: cleanPrice(p.precioUnitario),
+      cantidad: Number(p.cantidad) || 1,
+      precioNum: cleanPrice(p.precioUnitario),
+      subtotalNum: cleanPrice(p.precioUnitario) * (Number(p.cantidad) || 1),
+      comentario: p.comentario || ""
     }));
 
     console.log('✅ [CartContext] MESA CARGADA:', reconstruido);
-    
     setItems(reconstruido);
-    // Guardamos la versión fresca de Sanity en la memoria del navegador
-    sessionStorage.setItem('talanquera_cart', JSON.stringify(reconstruido));
   };
+
   const actualizarComentario = (lineId, comentario) => {
-    setItems(prev => {
-      const nuevo = prev.map(it => it.lineId === lineId ? { ...it, comentario } : it);
-      sessionStorage.setItem('talanquera_cart', JSON.stringify(nuevo));
-      return nuevo;
-    });
+    setItems(prev =>
+      prev.map(it =>
+        it.lineId === lineId ? { ...it, comentario } : it
+      )
+    );
   };
 
   const decrease = (lineId) => {
@@ -85,18 +107,41 @@ export function CartProvider({ children }) {
 
   const clear = () => {
     setItems([]);
-    sessionStorage.removeItem('talanquera_cart');
-    sessionStorage.removeItem('talanquera_mesa'); // Limpia también rastro de mesa
+    setPropina(0);
+    setMontoManual(0);
+    localStorage.removeItem('talanquera_cart');
+    localStorage.removeItem('talanquera_mesa');
   };
 
+  // 🧮 CÁLCULO DEL TOTAL BLINDADO
   const total = useMemo(() => {
-    return items.reduce((s, it) => s + (clean(it.precioNum) * it.cantidad), 0);
-  }, [items]);
+    const subtotalProductos = items.reduce((s, it) => s + (it.precioNum * it.cantidad), 0);
+    
+    // Si la propina es manual (-1), ignoramos porcentajes y sumamos el monto puro
+    if (propina === -1) {
+      return subtotalProductos + Number(montoManual);
+    }
+    
+    const valorPropinaPorcentaje = subtotalProductos * (propina / 100);
+    return subtotalProductos + valorPropinaPorcentaje;
+  }, [items, propina, montoManual]);
 
   return (
     <CartContext.Provider value={{
-      items, addProduct, setCartFromOrden, decrease, clear, total,
-      metodoPago, setMetodoPago, actualizarComentario, cleanPrice: clean
+      items,
+      addProduct,
+      setCartFromOrden,
+      decrease,
+      clear,
+      total,
+      metodoPago,
+      setMetodoPago,
+      propina,
+      setPropina,
+      montoManual,
+      setMontoManual,
+      actualizarComentario,
+      cleanPrice: cleanPrice
     }}>
       {children}
     </CartContext.Provider>

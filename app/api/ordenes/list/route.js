@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
-import { client, sanityClientServer } from '@/lib/sanity';
+import { sanityClientServer } from '@/lib/sanity';
+import { crypto } from 'crypto'; // Aseguramos disponibilidad de randomUUID
 
-// 🛡️ Blindaje contra caché: Fuerza a Next.js a buscar siempre datos frescos
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 /**
  * LISTAR ÓRDENES ACTIVAS
+ * Modificado para traer los platos y que el cajero vea el contenido
  */
 export async function GET() {
     try {
@@ -14,8 +15,9 @@ export async function GET() {
             _id,
             mesa,
             mesero,
-            fechaCreacion
-        }`; // 🆕 Agregamos 'mesero' a la consulta para que el modal lo muestre
+            fechaCreacion,
+            platosOrdenados // ✅ CRÍTICO: Si no traemos esto, el cajero ve la mesa pero no los platos
+        }`;
 
         const data = await sanityClientServer.fetch(query);
         
@@ -32,7 +34,7 @@ export async function GET() {
 export async function POST(request) {
     try {
         const body = await request.json();
-        const { mesa, mesero, platosOrdenados, ordenId } = body; // 🆕 Recibimos 'mesero'
+        const { mesa, mesero, platosOrdenados, ordenId } = body;
 
         if (!mesa || !Array.isArray(platosOrdenados) || platosOrdenados.length === 0) {
             return NextResponse.json(
@@ -43,14 +45,15 @@ export async function POST(request) {
 
         const platosNormalizados = platosOrdenados.map(p => {
             const cantidad = Number(p.cantidad) || 1;
-            const precio = Number(p.precioUnitario) || 0;
+            const precio = Number(p.precioUnitario || p.precioNum) || 0; // ✅ Soporte para ambos nombres de propiedad
 
             return {
-                _key: crypto.randomUUID(),
-                nombrePlato: p.nombrePlato,
+                _key: p._key || Math.random().toString(36).substring(2, 9), // Generador de llave seguro si no existe
+                nombrePlato: p.nombrePlato || p.nombre, // ✅ Mapeo de nombre
                 cantidad,
                 precioUnitario: precio,
-                subtotal: precio * cantidad
+                subtotal: precio * cantidad,
+                comentario: p.comentario || ""
             };
         });
 
@@ -60,7 +63,7 @@ export async function POST(request) {
                 .patch(ordenId)
                 .set({
                     mesa,
-                    mesero, // 🆕 Actualizamos o mantenemos el mesero
+                    mesero,
                     platosOrdenados: platosNormalizados,
                     fechaCreacion: new Date().toISOString()
                 })
@@ -78,7 +81,7 @@ export async function POST(request) {
         const nuevaOrden = {
             _type: 'ordenActiva',
             mesa,
-            mesero, // 🆕 Guardamos el mesero en la creación
+            mesero,
             fechaCreacion: new Date().toISOString(),
             platosOrdenados: platosNormalizados
         };

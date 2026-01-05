@@ -18,23 +18,19 @@ export default function ReporteModal({
                 <div style={{ backgroundColor: '#F9FAFB', padding: '15px', borderRadius: '10px', marginBottom: '20px', border: '1px solid #E5E7EB' }}>
                     <p style={{ margin: '0 0 10px 0', fontSize: '0.9rem', fontWeight: 'bold', textAlign: 'center' }}>PERIODO: {fechaInicio} al {fechaFin}</p>
                     <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-                        <div style={{ flex: 1 }}>
-                            <label style={{ fontSize: '0.7rem', fontWeight: 'bold' }}>DESDE:</label>
-                            <input type="date" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} style={{ width: '100%', padding: '8px', border: '1px solid #D1D5DB', borderRadius: '5px' }} />
-                        </div>
-                        <div style={{ flex: 1 }}>
-                            <label style={{ fontSize: '0.7rem', fontWeight: 'bold' }}>HASTA:</label>
-                            <input type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} style={{ width: '100%', padding: '8px', border: '1px solid #D1D5DB', borderRadius: '5px' }} />
-                        </div>
+                        <div style={{ flex: 1 }}><label style={{ fontSize: '0.7rem', fontWeight: 'bold' }}>DESDE:</label><input type="date" value={fechaInicio} onChange={(e) => setFechaInicio(e.target.value)} style={{ width: '100%', padding: '8px', border: '1px solid #D1D5DB', borderRadius: '5px' }} /></div>
+                        <div style={{ flex: 1 }}><label style={{ fontSize: '0.7rem', fontWeight: 'bold' }}>HASTA:</label><input type="date" value={fechaFin} onChange={(e) => setFechaFin(e.target.value)} style={{ width: '100%', padding: '8px', border: '1px solid #D1D5DB', borderRadius: '5px' }} /></div>
                     </div>
                     <button onClick={onGenerar} style={{ width: '100%', padding: '10px', backgroundColor: '#10B981', color: 'white', border: 'none', borderRadius: '5px', fontWeight: 'bold', cursor: 'pointer' }}>🔍 ACTUALIZAR</button>
                 </div>
                 {cargando ? <p style={{ textAlign: 'center' }}>Calculando...</p> : (
                     <>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#059669', marginBottom: '5px' }}><span>Ventas:</span><strong>${datos.ventas.toLocaleString('es-CO')}</strong></div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#DC2626', marginBottom: '10px' }}><span>Gastos:</span><strong>- ${datos.gastos.toLocaleString('es-CO')}</strong></div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.4rem', fontWeight: '900', backgroundColor: '#FEF3C7', padding: '12px', borderRadius: '10px', border: '1px solid #FCD34D' }}>
-                            <span>UTILIDAD:</span><span>${(datos.ventas - datos.gastos).toLocaleString('es-CO')}</span>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#1F2937', marginBottom: '5px' }}><span>Ventas Netas:</span><strong>${datos.ventas.toLocaleString('es-CO')}</strong></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#059669', marginBottom: '5px' }}><span>(+) Propinas:</span><strong>${(datos.totalPropinas || 0).toLocaleString('es-CO')}</strong></div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', color: '#DC2626', marginBottom: '10px' }}><span>(-) Gastos:</span><strong>${datos.gastos.toLocaleString('es-CO')}</strong></div>
+                        <div style={{ display: 'flex', flexDirection: 'column', backgroundColor: '#FEF3C7', padding: '12px', borderRadius: '10px', border: '1px solid #FCD34D', textAlign: 'center' }}>
+                            <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#92400E' }}>TOTAL RECAUDADO EN CAJA</span>
+                            <span style={{ fontSize: '1.6rem', fontWeight: '900' }}>${(datos.ventas + (datos.totalPropinas || 0) - datos.gastos).toLocaleString('es-CO')}</span>
                         </div>
                         <h3 style={{ marginTop: '20px', fontSize: '1rem', borderBottom: '2px solid #F3F4F6', paddingBottom: '5px' }}>🍽️ Productos</h3>
                         <div style={{ backgroundColor: '#F3F4F6', padding: '10px', borderRadius: '8px' }}>

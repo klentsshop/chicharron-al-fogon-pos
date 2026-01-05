@@ -199,3 +199,61 @@ body {
   color: var(--primary);
   margin-top: 5px;
 }
+/* =================================================
+   IMPRESIÓN TÉRMICA - GLOBAL (NO MODULE)
+   ================================================= */
+
+/* Por defecto no se muestran */
+#ticket-print,
+#comanda-print {
+  display: none;
+}
+
+@media print {
+
+  @page {
+    size: 80mm auto;
+    margin: 0;
+  }
+
+  /* Ocultar todo */
+  body * {
+    visibility: hidden;
+  }
+
+  /* Área imprimible */
+  .seccion-impresion-termica,
+  .seccion-impresion-termica * {
+    visibility: visible;
+  }
+
+  .seccion-impresion-termica {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 80mm;
+    padding: 2mm;
+    background: white;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    color: black;
+  }
+
+  /* Cliente */
+  body.imprimiendo-cliente #ticket-print {
+    display: block;
+  }
+
+  body.imprimiendo-cliente #comanda-print {
+    display: none;
+  }
+
+  /* Cocina */
+  body.imprimiendo-cocina #comanda-print {
+    display: block;
+  }
+
+  body.imprimiendo-cocina #ticket-print {
+    display: none;
+  }
+}

@@ -8,15 +8,16 @@ export async function POST(req) {
         const body = await req.json();
         const { mesa, mesero, platosOrdenados, ordenId } = body;
 
-        // 🔥 MAPEO CRÍTICO: Aseguramos que 'comentario' llegue a Sanity
+        // 🧠 MAPEO DE SEGURIDAD: Preparamos los datos para el esquema de Sanity
         const platosParaSanity = platosOrdenados.map(p => ({
-            _key: p.lineId || Math.random().toString(36).substring(2, 11),
-            _type: 'platoOrdenado', // Asegúrate de que coincida con tu esquema
+            // Usamos el lineId (UUID) que generamos en el CartContext como _key
+            _key: p.lineId || p._key || Math.random().toString(36).substring(2, 11),
+            _type: 'platoOrdenado', 
             nombrePlato: p.nombre || p.nombrePlato,
             cantidad: Number(p.cantidad) || 1,
             precioUnitario: Number(p.precioNum || p.precioUnitario || 0),
             subtotal: Number(p.subtotalNum || p.subtotal || 0),
-            // ✅ AQUÍ ESTABA EL ERROR: Se debe enviar como 'comentario'
+            // ✅ Comentario garantizado
             comentario: p.comentario || "" 
         }));
 
@@ -30,24 +31,26 @@ export async function POST(req) {
 
         let resultado;
         if (ordenId) {
-            // Actualizar mesa existente
+            // Actualizar mesa existente (PATCH)
             resultado = await sanityClientServer
                 .patch(ordenId)
                 .set({
                     mesa: doc.mesa,
                     mesero: doc.mesero,
-                    platosOrdenados: doc.platosOrdenados
+                    platosOrdenados: doc.platosOrdenados,
+                    // Actualizamos también la fecha para saber cuándo fue el último cambio
+                    ultimaActualizacion: new Date().toISOString()
                 })
                 .commit();
         } else {
-            // Crear mesa nueva
+            // Crear mesa nueva (CREATE)
             resultado = await sanityClientServer.create(doc);
         }
 
         return NextResponse.json(resultado, { status: 201 });
 
     } catch (err) {
-        console.error('[API_ORDENES_ERROR]:', err);
+        console.error('🔥 [API_ORDENES_ERROR]:', err);
         return NextResponse.json({ error: err.message }, { status: 500 });
     }
 }

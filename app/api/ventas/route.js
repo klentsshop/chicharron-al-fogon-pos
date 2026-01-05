@@ -13,42 +13,40 @@ export async function POST(req) {
         const mesero = payload.mesero || 'Personal General';
         const metodoPago = payload.metodoPago || 'efectivo';
         const totalPagado = Number(payload.totalPagado) || 0;
+        const propinaRecaudada = Number(payload.propinaRecaudada) || 0; // 👈 Capturamos la propina
         const ordenId = payload.ordenId;
 
-        // --- MEJORA 1: Folio con Fecha (Ej: TAL-2312-A1B2) ---
-        // Esto ayuda al dueño a identificar ventas por día visualmente
-        const datePart = new Intl.DateTimeFormat('es-CO', {
-            timeZone: 'America/Bogota',
-            year: '2-digit',
-            month: '2-digit',
-            day: '2-digit'
-        }).format(new Date()).replace(/\//g, ''); // 231225
-        
+        // --- FOLIO PROFESIONAL (TAL-AAMMDD-XXXX) ---
+        const now = new Date();
+        const datePart = now.toISOString().slice(2, 10).replace(/-/g, ''); 
         const randomPart = crypto.randomBytes(2).toString('hex').toUpperCase();
         const folioGenerado = `TAL-${datePart}-${randomPart}`;
 
+        // --- MAPEO DE PLATOS VENDIDOS ---
         const platosVenta = (payload.platosVendidosV2 || []).map(item => ({
             _key: crypto.randomUUID(), 
+            _type: 'platoVendidoV2',
             nombrePlato: item.nombrePlato,
             cantidad: Number(item.cantidad) || 1,
             precioUnitario: Number(item.precioUnitario) || 0,
             subtotal: Number(item.subtotal) || 0,
-            _type: 'platoVendidoV2' 
+            comentario: item.comentario || "" 
         }));
 
         const objetoVenta = {
             _type: 'venta',
-            folio: folioGenerado, // Folio más profesional
+            folio: folioGenerado,
             mesa: mesa,
             mesero: mesero,
             metodoPago: metodoPago,
-            totalPagado: totalPagado,
-            // --- MEJORA 2: Fecha ISO Completa ---
-            // Sanity guarda en UTC por defecto, lo cual es correcto para nuestro filtro frontend
-            fecha: new Date().toISOString(), 
+            totalPagado: totalPagado, // Venta neta
+            propinaRecaudada: propinaRecaudada, // 👈 Se guarda como campo independiente
+            fecha: now.toISOString(), 
             platosVendidosV2: platosVenta,
         };
 
+        // --- TRANSACCIÓN ATÓMICA ---
+        // 1. Crea la venta. 2. Si venía de una mesa guardada, la elimina de 'ordenesActivas'.
         let transaction = sanityClientServer.transaction().create(objetoVenta);
 
         if (ordenId) {
@@ -59,17 +57,15 @@ export async function POST(req) {
 
         return NextResponse.json({ 
             ok: true, 
-            message: 'Venta registrada con éxito',
-            mesa: mesa,
-            mesero: mesero,
-            folio: objetoVenta.folio
+            message: 'Venta registrada y mesa liberada',
+            folio: folioGenerado
         }, { status: 201 });
 
     } catch (err) {
-        console.error('[FATAL_ERROR_VENTAS]:', err);
+        console.error('🔥 [FATAL_ERROR_VENTAS]:', err);
         return NextResponse.json({ 
             ok: false, 
-            error: 'Error en la transacción de venta',
+            error: 'Error en la transacción',
             details: err.message 
         }, { status: 500 });
     }

@@ -1,6 +1,8 @@
 import React from 'react';
 import { formatPrecioDisplay, categoriasMap } from '@/lib/utils';
 import { urlFor } from '@/lib/sanity';
+// ✅ Importamos la configuración maestra para la moneda y lógica
+import { SITE_CONFIG } from '@/lib/config';
 
 export default function ProductGrid({
     platos, platosFiltrados, categoriaActiva, setCategoriaActiva,
@@ -73,7 +75,8 @@ export default function ProductGrid({
                         <div className={styles.cardInfo}>
                             <div className={styles.cardTitle}>{plato.nombre}</div>
                             <div className={styles.cardPrice}>
-                                ${formatPrecioDisplay(plato.precio).toLocaleString('es-CO')}
+                                {/* ✅ Ahora la moneda es dinámica según SITE_CONFIG */}
+                                {SITE_CONFIG.brand.symbol}{formatPrecioDisplay(plato.precio).toLocaleString(SITE_CONFIG.brand.currency)}
                             </div>
                         </div>
                     </div>
