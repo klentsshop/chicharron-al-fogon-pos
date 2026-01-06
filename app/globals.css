@@ -19,19 +19,23 @@ body {
   font-family: 'Roboto', sans-serif;
   background-color: var(--bg-gray);
   height: 100vh;
-  overflow: hidden; /* Evita scroll en toda la página */
+  overflow-x: hidden;
 }
 
-/* LAYOUT PRINCIPAL: Pantalla dividida */
+/* =========================
+   LAYOUT PRINCIPAL POS
+   ========================= */
 .pos-layout {
   display: flex;
   height: 100vh;
   width: 100vw;
 }
 
-/* --- SECCIÓN IZQUIERDA: TICKET --- */
+/* =========================
+   SECCIÓN IZQUIERDA: TICKET
+   ========================= */
 .ticket-panel {
-  width: 30%; /* Ocupa el 30% de la pantalla */
+  width: 30%;
   min-width: 350px;
   background-color: var(--white);
   border-right: 1px solid var(--border);
@@ -55,7 +59,7 @@ body {
 
 .ticket-body {
   flex: 1;
-  overflow-y: auto; /* Scroll solo en la lista de items */
+  overflow-y: auto;
   padding: 15px;
 }
 
@@ -74,10 +78,13 @@ body {
   background: #ffebee;
   color: #c62828;
   border: none;
-  width: 30px; height: 30px;
+  width: 30px;
+  height: 30px;
   border-radius: 50%;
   cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-weight: bold;
 }
 
@@ -88,39 +95,45 @@ body {
 }
 
 .total-row {
-  display: flex; justify-content: space-between;
-  font-size: 1.4rem; font-weight: bold;
-  margin-bottom: 15px; color: var(--dark);
+  display: flex;
+  justify-content: space-between;
+  font-size: 1.4rem;
+  font-weight: bold;
+  margin-bottom: 15px;
+  color: var(--dark);
 }
 
 .btn-cobrar {
   width: 100%;
   padding: 15px;
-  background-color: #2e7d32; /* Verde Dinero */
+  background-color: #2e7d32;
   color: white;
   border: none;
   border-radius: 8px;
-  font-size: 1.2rem; font-weight: bold;
+  font-size: 1.2rem;
+  font-weight: bold;
   cursor: pointer;
   transition: background 0.2s;
 }
+
 .btn-cobrar:hover { background-color: #1b5e20; }
 
-/* --- SECCIÓN DERECHA: MENÚ --- */
+/* =========================
+   SECCIÓN DERECHA: MENÚ
+   ========================= */
 .menu-panel {
-  flex: 1; /* Ocupa el resto (70%) */
+  flex: 1;
   display: flex;
   flex-direction: column;
   background-color: var(--bg-gray);
   position: relative;
 }
 
-/* Categorías (Scroll horizontal tipo App) */
-/* CORRECCIÓN CATEGORÍAS: Wrap para que bajen si no caben */
 .categories-bar {
-  padding: 15px; background: white;
-  display: flex; 
-  flex-wrap: wrap; /* ¡ESTO ARREGLA QUE SE ESCONDAN! */
+  padding: 15px;
+  background: white;
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   border-bottom: 1px solid var(--border);
 }
@@ -136,20 +149,18 @@ body {
   transition: all 0.2s;
 }
 
-.cat-btn:hover { background-color: #f0f0f0; }
 .cat-btn.active {
   background-color: var(--primary);
   color: white;
   border-color: var(--primary);
 }
 
-/* Grid de Productos */
 .products-grid {
   flex: 1;
   padding: 20px;
   overflow-y: auto;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); /* Tarjetas responsivas */
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   gap: 15px;
   align-content: start;
 }
@@ -160,100 +171,116 @@ body {
   overflow: hidden;
   box-shadow: var(--shadow);
   cursor: pointer;
-  transition: transform 0.1s, box-shadow 0.1s;
-  display: flex;
-  flex-direction: column;
   height: 140px;
   border: 1px solid transparent;
 }
 
-.product-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 8px 15px rgba(0,0,0,0.1);
-  border-color: var(--primary);
-}
-
-.card-top {
-  height: 60px;
-  background-color: #eee;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 2rem;
-}
-
-.card-body {
-  padding: 10px;
-  flex: 1;
-  display: flex; flex-direction: column; justify-content: space-between;
-}
-
-.card-title {
-  font-size: 0.9rem;
-  font-weight: 600;
-  line-height: 1.2;
-  color: var(--dark);
-}
-
-.card-price {
-  font-size: 1rem;
-  font-weight: 700;
-  color: var(--primary);
-  margin-top: 5px;
-}
 /* =================================================
-   IMPRESIÓN TÉRMICA - GLOBAL (NO MODULE)
+   RUTA /ticket/[id] - VISTA EN PANTALLA
    ================================================= */
+@media screen {
+  .ticket-page-container {
+    background-color: #d1d5db;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 40px 10px;
+  }
 
-/* Por defecto no se muestran */
+  .ticket-page-container #ticket-print,
+  .ticket-page-container #comanda-print {
+    display: block !important;
+    background: white !important;
+    width: 100%;
+    max-width: 450px;
+    padding: 25px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    border-radius: 4px;
+    margin-bottom: 80px;
+  }
+
+  .btn-flotante-print {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    background: #1e40af;
+    color: white;
+    padding: 15px 30px;
+    border-radius: 50px;
+    font-weight: bold;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+    z-index: 1000;
+    border: none;
+    cursor: pointer;
+  }
+}
+
+/* =================================================
+   CONTROL BASE DE VISIBILIDAD
+   ================================================= */
 #ticket-print,
 #comanda-print {
   display: none;
 }
 
-@media print {
+/* =================================================
+   CONTROL POR TIPO DE TICKET (SCREEN)
+   ================================================= */
+@media screen {
+  .view-cocina #ticket-print { display: none !important; }
+  .view-cocina #comanda-print { display: block !important; }
 
+  .view-cliente #comanda-print { display: none !important; }
+  .view-cliente #ticket-print { display: block !important; }
+}
+
+/* =================================================
+   IMPRESIÓN TÉRMICA
+   ================================================= */
+@media print {
   @page {
     size: 80mm auto;
     margin: 0;
   }
 
-  /* Ocultar todo */
-  body * {
+  body {
     visibility: hidden;
   }
 
-  /* Área imprimible */
+  .ticket-page-container,
+  .ticket-page-container *,
   .seccion-impresion-termica,
   .seccion-impresion-termica * {
     visibility: visible;
   }
 
+  .ticket-page-container,
   .seccion-impresion-termica {
     position: absolute;
     top: 0;
     left: 0;
     width: 80mm;
-    padding: 2mm;
+    padding: 0;
+    margin: 0;
     background: white;
-    font-family: 'Courier New', monospace;
-    font-size: 13px;
-    color: black;
   }
 
-  /* Cliente */
-  body.imprimiendo-cliente #ticket-print {
-    display: block;
+  /* 🔥 CLAVE: forzar render real */
+  #ticket-print,
+  #comanda-print {
+    display: block !important;
+    width: 100% !important;
+    box-shadow: none !important;
+    padding: 2mm !important;
   }
 
-  body.imprimiendo-cliente #comanda-print {
-    display: none;
+  .view-cocina #ticket-print,
+  .view-cliente #comanda-print {
+    display: none !important;
   }
 
-  /* Cocina */
-  body.imprimiendo-cocina #comanda-print {
-    display: block;
-  }
-
-  body.imprimiendo-cocina #ticket-print {
-    display: none;
+  .print\:hidden {
+    display: none !important;
   }
 }

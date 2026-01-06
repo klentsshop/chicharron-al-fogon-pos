@@ -169,14 +169,14 @@
 
     .closeCartMobile {
         display: block !important;
-        background: #111827;
+        background: #166534;;
         padding: 12px;
         text-align: center;
-        color: #9CA3AF;
+        color: #F59E0B;
         font-size: 0.75rem;
         font-weight: bold;
         cursor: pointer;
-        border-bottom: 1px solid #374151;
+        border-bottom: 1px solid #D97706;
     }
 
     .categoriesBar {

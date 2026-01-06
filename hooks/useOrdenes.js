@@ -9,8 +9,8 @@ const fetcher = (url) => fetch(url).then((res) => {
 
 export function useOrdenes() {
     // ✅ Sincronización Real-Time: SWR consulta al servidor cada 5 segundos.
-    // Esto es lo que permite que el Cajero vea lo que el Mesero guarda.
-    const { data: ordenes = [], mutate, error } = useSWR('/api/ordenes/list', fetcher, {
+    // 🛠️ Cambiado: de '/api/ordenes/list' a '/api/ordenes' para evitar el 404
+    const { data: ordenes = [], mutate, error } = useSWR('/api/ordenes', fetcher, {
         refreshInterval: 5000, 
         revalidateOnFocus: true,
         revalidateOnReconnect: true
@@ -28,7 +28,8 @@ export function useOrdenes() {
                 estado: ordenPayload.estado || 'abierta'
             };
 
-            const res = await fetch('/api/ordenes/list', {
+            // 🛠️ Cambiado: URL unificada a '/api/ordenes'
+            const res = await fetch('/api/ordenes', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload),
@@ -54,6 +55,7 @@ export function useOrdenes() {
     const eliminarOrden = async (ordenId) => {
         if (!ordenId) return;
         try {
+            // 📝 Nota: Esta ruta /api/ordenes/delete debe existir como carpeta/archivo aparte
             const res = await fetch('/api/ordenes/delete', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

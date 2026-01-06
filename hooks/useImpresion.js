@@ -1,12 +1,20 @@
 // app/hooks/useImpresion.js
+import { useState } from 'react';
+
 export function useImpresion(cart, config) {
+    // 🛡️ ESTADO CLAVE: Controla si PrintTemplates muestra Factura o Comanda
+    const [modoCocina, setModoCocina] = useState(false);
 
     const imprimirCliente = () => {
         if (!cart || cart.length === 0) return;
 
+        // 1. Cambiamos el modo para que el componente renderice Factura
+        setModoCocina(false);
+        
         document.body.classList.remove('imprimiendo-cocina');
         document.body.classList.add('imprimiendo-cliente');
 
+        // 2. Pequeño delay para que React renderice el cambio antes de imprimir
         setTimeout(() => { 
             window.print(); 
             document.body.classList.remove('imprimiendo-cliente'); 
@@ -16,12 +24,18 @@ export function useImpresion(cart, config) {
     const imprimirCocina = () => {
         if (!cart || cart.length === 0) return;
 
+        // 1. 🚀 ACTIVAMOS EL DISEÑO DE COCINA (Mesa grande, sin precios)
+        setModoCocina(true);
+
         document.body.classList.remove('imprimiendo-cliente');
         document.body.classList.add('imprimiendo-cocina');
 
+        // 2. Pequeño delay para asegurar que el diseño pro de cocina cargue
         setTimeout(() => { 
             window.print(); 
             document.body.classList.remove('imprimiendo-cocina');
+            // 3. Reset opcional después de imprimir para no dejar el ticket en modo cocina
+            // setModoCocina(false); 
         }, 500);
     };
 
@@ -96,6 +110,7 @@ export function useImpresion(cart, config) {
         imprimirCliente,
         imprimirCocina,
         agruparParaCliente,
-        agruparParaCocina
+        agruparParaCocina,
+        modoCocina // 👈 ¡CLAVE! Debes pasarlo a PrintTemplates en MenuPanel.js
     };
 }

@@ -49,7 +49,6 @@ export default function MenuPanel() {
     const gst = useGastos();
     
     const acc = useAccesos(RESTAURANTE_CONFIG, setNombreMesero, {
-        // ✅ Corregido: Activamos modal y cargamos datos con delay para evitar colisión de prompts
         onAdminSuccess: (pin) => { 
             rep.setMostrarAdmin(true); 
             setTimeout(() => {
@@ -58,10 +57,12 @@ export default function MenuPanel() {
         }
     });
 
+    // 🚀 CONEXIÓN MAESTRA: Pasamos 'rep' para que las ventas actualicen los totales al instante
     const ord = useOrdenHandlers({
         cart, total, clearCart, setCartFromOrden, apiGuardar, apiEliminar, 
         refreshOrdenes, ordenesActivas, esModoCajero: acc.esModoCajero, 
-        setMostrarCarritoMobile, nombreMesero, setNombreMesero
+        setMostrarCarritoMobile, nombreMesero, setNombreMesero,
+        rep // 👈 Vital para el refresco automático de reportes tras cobrar
     });
 
     useEffect(() => {
@@ -105,6 +106,7 @@ export default function MenuPanel() {
                     clearCart={clearCart} imprimirTicket={imp.imprimirCliente} 
                     actualizarComentario={actualizarComentario} imprimirComandaCocina={imp.imprimirCocina}
                     propina={propina} setPropina={setPropina} montoManual={montoManual} setMontoManual={setMontoManual}
+                    resetOrdenActual={ord.resetOrdenActual} // 👈 ¡CLAVE! Ahora la "X" puede resetear la mesa
                 />
 
                 <ProductGrid 
@@ -115,6 +117,9 @@ export default function MenuPanel() {
                     mostrarCarritoMobile={mostrarCarritoMobile} setMostrarCarritoMobile={setMostrarCarritoMobile}
                 />
 
+                {/* ======================================================
+                    🛡️ CORRECCIÓN AQUÍ: Integración con el hook de impresión
+                    ====================================================== */}
                 <PrintTemplates 
                     cart={cart} total={total} ordenMesa={ord.ordenMesa} 
                     nombreMesero={nombreMesero} config={RESTAURANTE_CONFIG} 
@@ -123,6 +128,7 @@ export default function MenuPanel() {
                     ordenActivaId={ord.ordenActivaId}
                     cleanPrice={cleanPrice}
                     propina={propina} montoManual={montoManual}
+                    esSoloCocina={imp.modoCocina} // 👈 ¡ESTA ES LA LÍNEA QUE FALTABA!
                 />
             </div>
 

@@ -55,13 +55,14 @@ export default function TicketPanel({
     imprimirTicket, 
     imprimirComandaCocina, 
     actualizarComentario,
-    propina = 0, setPropina, // 👈 Props para propina
-    montoManual = 0, setMontoManual // 👈 Props para monto manual
+    propina = 0, setPropina,
+    montoManual = 0, setMontoManual,
+    resetOrdenActual 
 }) {
     // 🔍 Mejora: Función para limpiar el emoji del título y evitar el doble icono
     const limpiarIconoDeTexto = (texto) => {
         const partes = texto.split(' ');
-        if (partes.length > 1) return partes.slice(1).join(' '); // Retorna el texto sin el primer elemento (emoji)
+        if (partes.length > 1) return partes.slice(1).join(' '); 
         return texto;
     };
 
@@ -75,12 +76,14 @@ export default function TicketPanel({
         >
             
             {/* 1. BOTÓN VOLVER (MÓVIL) */}
-            <div onClick={() => setMostrarCarritoMobile(false)} className={styles.closeCartMobile}>
+            <div onClick={() => setMostrarCarritoMobile(false)} 
+                 className={styles.closeCartMobile}
+                 style={{ background: '#166534', color: 'white' }}>
                 ▼ TOCAR PARA VOLVER A LOS PLATOS
             </div>
 
             {/* 2. CABECERA - ROLES Y MESEROS */}
-            <div style={{ padding: '8px 12px', background: SITE_CONFIG.theme.dark, color: 'white', flexShrink: 0 }}>
+            <div style={{ padding: '8px 12px', background: '#166534', color: 'white', flexShrink: 0, borderBottom: '2px solid #D97706' }}>
                 
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -90,7 +93,7 @@ export default function TicketPanel({
                                 margin: 0, 
                                 cursor: 'pointer', 
                                 fontWeight: 'bold',
-                                color: esModoCajero ? SITE_CONFIG.theme.primary : 'white' 
+                                color: 'white' 
                             }}>
                             {SITE_CONFIG.brand.shortName.toUpperCase()} {ordenMesa ? `(${ordenMesa})` : 'ACTUAL'}
                         </h2>
@@ -100,10 +103,11 @@ export default function TicketPanel({
                                 onClick={() => {
                                     if (typeof clearCart === 'function') {
                                         clearCart(); 
-                                        if (typeof setNombreMesero === 'function') setNombreMesero(null);
+                                        if (typeof resetOrdenActual === 'function') resetOrdenActual();
+                                        if (typeof setNombreMesero === 'function' && !esModoCajero) setNombreMesero(null);
                                     }
                                 }}
-                                title="Nueva Orden (Limpiar pantalla)"
+                                title="Nueva Orden"
                                 style={{
                                     width: '22px', height: '22px', borderRadius: '50%',
                                     backgroundColor: '#4B5563', color: 'white', border: 'none',
@@ -149,18 +153,26 @@ export default function TicketPanel({
                     )}
 
                     <button 
-                        onClick={() => esModoCajero ? generarCierreDia() : alert("🔒 Solo el cajero puede ver reportes")} 
+                        onClick={() => esModoCajero ? generarCierreDia() : alert("🔒 Acceso Denegado")} 
+                        disabled={!esModoCajero}
                         style={{ 
                             flex: 1, padding: '6px 2px', fontSize: '0.6rem', 
                             backgroundColor: esModoCajero ? SITE_CONFIG.theme.danger : '#4B5563', 
                             color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold', 
-                            cursor: esModoCajero ? 'pointer' : 'not-allowed', opacity: esModoCajero ? 1 : 0.6
+                            cursor: esModoCajero ? 'pointer' : 'not-allowed', opacity: esModoCajero ? 1 : 0.5
                         }}>
                         REPORTE
                     </button>
                     
-                    <button onClick={solicitarAccesoAdmin} 
-                        style={{ flex: 1, padding: '6px 2px', fontSize: '0.6rem', backgroundColor: '#374151', color: 'white', border: 'none', borderRadius: '4px', fontWeight: 'bold', cursor: 'pointer' }}>
+                    <button 
+                        onClick={solicitarAccesoAdmin} 
+                        disabled={!esModoCajero}
+                        style={{ 
+                            flex: 1, padding: '6px 2px', fontSize: '0.6rem', 
+                            backgroundColor: '#374151', color: 'white', border: 'none', borderRadius: '4px', 
+                            fontWeight: 'bold', cursor: esModoCajero ? 'pointer' : 'not-allowed',
+                            opacity: esModoCajero ? 1 : 0.5
+                        }}>
                         ADMIN
                     </button>
 
@@ -171,7 +183,7 @@ export default function TicketPanel({
                 </div>
             </div>
 
-            {/* 3. LISTADO DE PRODUCTOS (RESTAURADA ALINEACIÓN Y LÓGICA DE ORDENAMIENTO) */}
+            {/* 3. LISTADO DE PRODUCTOS */}
             <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: '10px 15px', background: '#f9fafb' }}>
                 {cart.length === 0 ? (
                     <p style={{ textAlign: 'center', color: '#9CA3AF', marginTop: '20px' }}>No hay productos seleccionados</p>
@@ -182,13 +194,7 @@ export default function TicketPanel({
                             const catB = (b.categoria || "").toLowerCase();
                             if (catA === SITE_CONFIG.logic.drinkCategory && catB !== SITE_CONFIG.logic.drinkCategory) return 1;
                             if (catA !== SITE_CONFIG.logic.drinkCategory && catB === SITE_CONFIG.logic.drinkCategory) return -1;
-                            const nameA = a.nombre.toLowerCase();
-                            const nameB = b.nombre.toLowerCase();
-                            const esPriA = SITE_CONFIG.logic.priorityKeywords.some(k => nameA.includes(k));
-                            const esPriB = SITE_CONFIG.logic.priorityKeywords.some(k => nameB.includes(k));
-                            if (esPriA && !esPriB) return -1;
-                            if (!esPriA && esPriB) return 1;
-                            return nameA.localeCompare(nameB);
+                            return (a.nombre || "").localeCompare(b.nombre || "");
                         })
                         .map(item => (
                         <div key={item.lineId} style={{ display: 'flex', flexDirection: 'column', padding: '12px 0', borderBottom: '1px solid #eee' }}>
@@ -215,10 +221,9 @@ export default function TicketPanel({
                 )}
             </div>
 
-            {/* 4. PIE DE PÁGINA - SELECTORES MEJORADOS Y CAMPO OTRO */}
+            {/* 4. PIE DE PÁGINA */}
             <div style={{ padding: '12px 15px', background: 'white', borderTop: '2px solid #eee', flexShrink: 0 }}>
                 
-                {/* 💳 SELECTORES: PAGO, PROPINA Y CAMPO OTRO */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
                     <div style={{ display: 'flex', gap: '8px' }}>
                         <div style={{ flex: 1, position: 'relative' }}>
@@ -244,8 +249,9 @@ export default function TicketPanel({
                             <select 
                                 value={propina} 
                                 onChange={(e) => {
-                                    setPropina(Number(e.target.value));
-                                    if (Number(e.target.value) !== -1) setMontoManual(0);
+                                    const val = Number(e.target.value);
+                                    setPropina(val);
+                                    if (val !== -1) setMontoManual(0);
                                 }}
                                 style={{ 
                                     width: '100%', padding: '10px 10px 10px 32px', borderRadius: '8px', border: '1px solid #D1D5DB',
@@ -260,16 +266,21 @@ export default function TicketPanel({
                         </div>
                     </div>
 
-                    {/* 💰 CAMPO PARA MONTO MANUAL (Solo aparece si se elige valor manual) */}
-                    {propina === -1 && (
-                        <div style={{ position: 'relative' }}>
-                            <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontWeight: 'bold', color: '#10B981' }}>$</span>
+                    {/* ✅ INTEGRACIÓN CORRECTA DE PROPINA MANUAL */}
+                    {(Number(propina) === -1) && (
+                        <div style={{ position: 'relative', marginTop: '4px' }}>
+                            <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', fontWeight: 'bold', color: '#10B981', zIndex: 1 }}>$</span>
                             <input 
                                 type="number"
                                 placeholder="Escriba valor de propina..."
                                 value={montoManual || ''}
                                 onChange={(e) => setMontoManual(Number(e.target.value))}
-                                style={{ width: '100%', padding: '10px 10px 10px 25px', borderRadius: '8px', border: '2px solid #10B981', outline: 'none', fontWeight: 'bold' }}
+                                autoFocus
+                                style={{ 
+                                    width: '100%', padding: '10px 10px 10px 25px', borderRadius: '8px', 
+                                    border: '2px solid #10B981', outline: 'none', fontWeight: 'bold',
+                                    backgroundColor: '#F0FDF4'
+                                }}
                             />
                         </div>
                     )}
@@ -288,18 +299,18 @@ export default function TicketPanel({
                                 🖨️ CLIENTE
                             </button>
                             <button onClick={imprimirComandaCocina} 
-                                style={{ flex: 0.5, padding: '12px 2px', backgroundColor: SITE_CONFIG.theme.dark, color: 'white', border: 'none', borderRadius: '6px', fontWeight: '800', fontSize: '0.65rem', cursor: 'pointer' }}>
+                                style={{ flex: 0.5, padding: '12px 2px', backgroundColor: '#78350F', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '800', fontSize: '0.65rem', cursor: 'pointer' }}>
                                 👨‍🍳 COCINA
                             </button>
                         </>
                     )}
                     <button onClick={guardarOrden} 
-                        style={{ flex: 1, padding: '12px', backgroundColor: '#fbbf24', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '800', fontSize: '0.85rem', cursor: 'pointer' }}>
+                        style={{ flex: 1, padding: '12px', backgroundColor: '#D97706', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '800', fontSize: '0.85rem', cursor: 'pointer' }}>
                         {ordenActivaId ? 'ACTUALIZAR' : 'GUARDAR'}
                     </button>
                     {esModoCajero && (
                         <button onClick={cobrarOrden} 
-                            style={{ flex: 1, padding: '12px', backgroundColor: SITE_CONFIG.theme.primary, color: 'white', border: 'none', borderRadius: '6px', fontWeight: '800', fontSize: '0.85rem', cursor: 'pointer' }}>
+                            style={{ flex: 1, padding: '12px', backgroundColor: '#10B981', color: 'white', border: 'none', borderRadius: '6px', fontWeight: '800', fontSize: '0.85rem', cursor: 'pointer' }}>
                             COBRAR
                         </button>
                     )}
