@@ -14,16 +14,21 @@ export function useOrdenHandlers({
     setMostrarCarritoMobile,
     nombreMesero,
     setNombreMesero,
-    rep
+    rep // ⛔️ YA NO SE USA AQUÍ (responsabilidad externa)
 }) {
     const [ordenActivaId, setOrdenActivaId] = useState(null);
     const [ordenMesa, setOrdenMesa] = useState(null);
+
     // ✅ Rastreador de productos ya enviados (IDs)
     const [productosYaImpresos, setProductosYaImpresos] = useState([]);
+
+    // 🔒 Candado anti doble acción
+    const [estaGuardando, setEstaGuardando] = useState(false);
+
     const router = useRouter();
 
     // ==============================
-    // NUEVA FUNCIÓN: RESET TOTAL (Para la "X")
+    // RESET TOTAL DE ORDEN
     // ==============================
     const resetOrdenActual = () => {
         setOrdenActivaId(null);
@@ -52,11 +57,12 @@ export function useOrdenHandlers({
                 setOrdenMesa(o.mesa);
                 setNombreMesero(o.mesero || (esModoCajero ? 'Caja' : null));
                 setCartFromOrden(o.platosOrdenados);
-                
-                // ✅ Capturamos los IDs que ya existen para ignorarlos en el ticket de adición
-                const idsExistentes = o.platosOrdenados.map(p => p._key || p.lineId);
+
+                const idsExistentes = o.platosOrdenados.map(
+                    p => p._key || p.lineId
+                );
                 setProductosYaImpresos(idsExistentes);
-                
+
                 setMostrarCarritoMobile(true);
                 return true;
             }
@@ -67,22 +73,26 @@ export function useOrdenHandlers({
     };
 
     // ==============================
-    // GUARDAR ORDEN (COCINA) - LÓGICA ANTI-DUPLICADOS
+    // GUARDAR ORDEN (COCINA)
     // ==============================
     const guardarOrden = async () => {
-        if (cart.length === 0) return;
+        if (cart.length === 0 || estaGuardando) return;
 
         const mesaDefault = esModoCajero ? 'Mostrador' : 'Mesa 1';
         const mesaIngresada = ordenMesa || prompt('Mesa o Cliente:', mesaDefault);
         if (!mesaIngresada) return;
+
         const mesa = mesaIngresada.trim();
 
         if (!ordenActivaId) {
             const existe = ordenesActivas.find(
-                (o) => o.mesa?.toLowerCase() === mesa.toLowerCase()
+                o => o.mesa?.toLowerCase() === mesa.toLowerCase()
             );
-            if (existe && confirm(`La [${mesa}] tiene orden activa. ¿Cargarla?`)) {
-                await cargarOrden(existe._id);
+
+            if (existe) {
+                if (confirm(`La [${mesa}] ya tiene orden activa. ¿Cargarla?`)) {
+                    await cargarOrden(existe._id);
+                }
                 return;
             }
         }
@@ -94,7 +104,8 @@ export function useOrdenHandlers({
         }
 
         try {
-            // Detectamos si es una actualización (adición)
+            setEstaGuardando(true);
+
             const esAdicion = ordenActivaId && productosYaImpresos.length > 0;
             const listaIgnorar = productosYaImpresos.join(',');
 
@@ -102,7 +113,7 @@ export function useOrdenHandlers({
                 mesa,
                 mesero: meseroFinal,
                 ordenId: ordenActivaId,
-                platosOrdenados: cart.map((i) => ({
+                platosOrdenados: cart.map(i => ({
                     _key: i.lineId || Math.random().toString(36).substr(2, 9),
                     nombrePlato: i.nombre || i.nombrePlato,
                     cantidad: i.cantidad,
@@ -114,25 +125,6 @@ export function useOrdenHandlers({
 
             const idParaTicket = res?._id || res?.ordenId;
 
-            // 1. Sincronización de UI
-            await refreshOrdenes();
-
-            // 2. Apertura de Ticket Inteligente (Enviamos lista de IDs a ignorar)
-            if (idParaTicket) {
-                const urlTicket = `/ticket/${idParaTicket}?type=cocina&auto=true${esAdicion ? `&ignorar=${listaIgnorar}` : ''}`;
-                
-                setTimeout(() => {
-                    const win = window.open(urlTicket, 'impresion', 'width=100,height=100,left=0,top=0');
-                    if (win) window.focus();
-                }, 100);
-                
-                alert(esAdicion 
-                    ? `✅ Adición enviada a cocina para la mesa [${mesa}].` 
-                    : `✅ Orden inicial de la mesa [${mesa}] enviada a cocina.`
-                );
-            }
-
-            // 3. Limpieza y cierre
             setOrdenActivaId(null);
             setOrdenMesa(null);
             setProductosYaImpresos([]);
@@ -140,23 +132,58 @@ export function useOrdenHandlers({
             if (!esModoCajero) setNombreMesero(null);
             setMostrarCarritoMobile(false);
 
+            await refreshOrdenes();
+
+            if (idParaTicket) {
+                const urlTicket =
+                    `/ticket/${idParaTicket}?type=cocina&auto=true` +
+                    (esAdicion ? `&ignorar=${listaIgnorar}` : '');
+
+                setTimeout(() => {
+                    const win = window.open(
+                        urlTicket,
+                        'impresion',
+                        'width=100,height=100,left=0,top=0'
+                    );
+                    if (win) window.focus();
+                }, 100);
+
+                alert(
+                    esAdicion
+                        ? `✅ Adición enviada a cocina para la mesa [${mesa}].`
+                        : `✅ Orden inicial de la mesa [${mesa}] enviada a cocina.`
+                );
+            }
+
         } catch (e) {
             console.error(e);
             alert('❌ Error al guardar.');
+        } finally {
+            setEstaGuardando(false);
         }
     };
 
     // ==============================
-    // COBRAR ORDEN (CAJA) - ALERTA GARANTIZADA
+    // COBRAR ORDEN (CAJA)
     // ==============================
     const cobrarOrden = async (metodoPago) => {
-        if (cart.length === 0 || !esModoCajero) return;
-        if (!confirm(`💰 ¿Confirmar cobro por $${total.toLocaleString('es-CO')}?`)) return;
+        if (cart.length === 0 || !esModoCajero || estaGuardando) {
+            return { ventaExitosa: false };
+        }
 
-        const subtotalVenta = cart.reduce((s, i) => s + (i.precioNum * i.cantidad), 0);
+        if (!confirm(`💰 ¿Confirmar cobro por $${total.toLocaleString('es-CO')}?`)) {
+            return { ventaExitosa: false };
+        }
+
+        const subtotalVenta = cart.reduce(
+            (s, i) => s + (i.precioNum * i.cantidad),
+            0
+        );
         const valorPropina = total - subtotalVenta;
 
         try {
+            setEstaGuardando(true);
+
             const res = await fetch('/api/ventas', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -167,7 +194,7 @@ export function useOrdenHandlers({
                     totalPagado: Number(subtotalVenta),
                     propinaRecaudada: Number(valorPropina),
                     ordenId: ordenActivaId || null,
-                    platosVendidosV2: cart.map((i) => ({
+                    platosVendidosV2: cart.map(i => ({
                         nombrePlato: i.nombre || i.nombrePlato,
                         cantidad: i.cantidad,
                         precioUnitario: i.precioNum,
@@ -182,52 +209,70 @@ export function useOrdenHandlers({
 
             if (ordenActivaId) await apiEliminar(ordenActivaId);
 
-            // 1. Procesar Ticket de Venta
-            if (ventaGuardada?._id) {
-                const urlTicket = `/ticket/${ventaGuardada._id}?type=cliente&auto=true`;
-                setTimeout(() => {
-                    const win = window.open(urlTicket, 'impresionVenta', 'width=100,height=100,left=0,top=0');
-                    if (win) window.focus();
-                }, 100);
-
-                // ✅ ALERTA DE VENTA EXITOSA
-                alert('✅ VENTA REALIZADA CON ÉXITO');
-            }
-
-            // 2. Limpieza total y refresco
             clearCart();
             setOrdenActivaId(null);
             setOrdenMesa(null);
             setProductosYaImpresos([]);
             await refreshOrdenes();
-            
+
+            if (ventaGuardada?._id) {
+                const urlTicket =
+                    `/ticket/${ventaGuardada._id}?type=cliente&auto=true`;
+
+                setTimeout(() => {
+                    const win = window.open(
+                        urlTicket,
+                        'impresionVenta',
+                        'width=100,height=100,left=0,top=0'
+                    );
+                    if (win) window.focus();
+                }, 100);
+
+                alert('✅ VENTA REALIZADA CON ÉXITO');
+            }
+
+            // ✅ RESULTADO EXPLÍCITO
+            return {
+                ventaExitosa: true,
+                ventaId: ventaGuardada?._id || null
+            };
+
         } catch (e) {
             console.error(e);
             alert('❌ Error en el pago.');
+            return { ventaExitosa: false };
+        } finally {
+            setEstaGuardando(false);
         }
     };
 
     // ==============================
-    // CANCELAR ORDEN (ELIMINAR)
+    // CANCELAR ORDEN
     // ==============================
     const cancelarOrden = async () => {
-        if (!ordenActivaId) return;
+        if (!ordenActivaId || estaGuardando) return;
+
         if (!esModoCajero) {
             alert('🔒 PIN de Cajero requerido.');
             return;
         }
 
-        if (confirm(`⚠️ ¿ELIMINAR PERMANENTEMENTE la orden de ${ordenMesa}?`)) {
-            try {
-                await apiEliminar(ordenActivaId);
-                alert('🗑️ Orden eliminada correctamente.');
-                resetOrdenActual();
-                await refreshOrdenes();
-                setMostrarCarritoMobile(false);
-            } catch (error) {
-                console.error(error);
-                alert('❌ Error al eliminar.');
-            }
+        if (!confirm(`⚠️ ¿ELIMINAR PERMANENTEMENTE la orden de ${ordenMesa}?`)) {
+            return;
+        }
+
+        try {
+            setEstaGuardando(true);
+            await apiEliminar(ordenActivaId);
+            resetOrdenActual();
+            await refreshOrdenes();
+            setMostrarCarritoMobile(false);
+            alert('🗑️ Orden eliminada correctamente.');
+        } catch (error) {
+            console.error(error);
+            alert('❌ Error al eliminar.');
+        } finally {
+            setEstaGuardando(false);
         }
     };
 
@@ -238,6 +283,7 @@ export function useOrdenHandlers({
         guardarOrden,
         cobrarOrden,
         cancelarOrden,
-        resetOrdenActual
+        resetOrdenActual,
+        estaGuardando
     };
 }
