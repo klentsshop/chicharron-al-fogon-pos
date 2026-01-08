@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import { cleanPrice } from '@/lib/utils'; // ✅ Usamos tu utilidad global
 
 const CartContext = createContext();
@@ -8,66 +8,73 @@ const CartContext = createContext();
 export function CartProvider({ children }) {
   const [items, setItems] = useState([]);
   const [metodoPago, setMetodoPago] = useState('efectivo');
-  const [propina, setPropina] = useState(0); // 👈 Estado para el % de propina
-  const [montoManual, setMontoManual] = useState(0); // 👈 Campo "Otro" (Monto manual)
+  const [propina, setPropina] = useState(0);
+  const [montoManual, setMontoManual] = useState(0);
 
-  // 💾 1. Al iniciar, recuperar del navegador si existe algo (Ahora localStorage)
+  // 🛡️ FLAG SENIOR: evita loops al hidratar desde orden
+  const isHydratingFromOrden = useRef(false);
+
+  // 💾 1. Al iniciar, recuperar del navegador si existe algo
   useEffect(() => {
     const saved = localStorage.getItem('talanquera_cart');
     if (saved) {
-      const parsed = JSON.parse(saved);
-      if (parsed.length > 0) setItems(parsed);
-    }
-
-    // 🔥 SINCRONIZACIÓN ENTRE PESTAÑAS:
-    const syncTabs = (e) => {
-      if (e.key === 'talanquera_cart') {
-        const newValue = e.newValue ? JSON.parse(e.newValue) : [];
-        setItems(newValue);
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setItems(parsed);
+        }
+      } catch (err) {
+        console.error('❌ Error leyendo localStorage carrito:', err);
       }
-    };
-    window.addEventListener('storage', syncTabs);
-    return () => window.removeEventListener('storage', syncTabs);
+    }
   }, []);
 
-  // 💾 2. Cada vez que cambien los items, guardarlos en el navegador
+  // 💾 2. Persistir cambios SOLO cuando el usuario modifica el carrito
   useEffect(() => {
+    if (isHydratingFromOrden.current) return;
+
     localStorage.setItem('talanquera_cart', JSON.stringify(items));
   }, [items]);
 
   const addProduct = (product) => {
     const precioNum = cleanPrice(product.precio);
-    
+
     setItems(prev => {
-      // 🧠 LÓGICA DE AGRUPACIÓN INTELIGENTE:
-      const existingIdx = prev.findIndex(it => 
+      const existingIdx = prev.findIndex(it =>
         it._id === product._id && (!it.comentario || it.comentario.trim() === '')
       );
 
       if (existingIdx !== -1) {
         const copy = [...prev];
-        copy[existingIdx] = { 
-          ...copy[existingIdx], 
-          cantidad: copy[existingIdx].cantidad + 1,
-          subtotalNum: (copy[existingIdx].cantidad + 1) * precioNum
+        const nuevaCantidad = copy[existingIdx].cantidad + 1;
+
+        copy[existingIdx] = {
+          ...copy[existingIdx],
+          cantidad: nuevaCantidad,
+          subtotalNum: nuevaCantidad * precioNum
         };
+
         return copy;
       }
 
-      return [...prev, {
-        ...product,
-        lineId: crypto.randomUUID(),
-        cantidad: 1,
-        precioNum,
-        subtotalNum: precioNum,
-        comentario: ''
-      }];
+      return [
+        ...prev,
+        {
+          ...product,
+          lineId: crypto.randomUUID(),
+          cantidad: 1,
+          precioNum,
+          subtotalNum: precioNum,
+          comentario: ''
+        }
+      ];
     });
   };
 
+  // 🔁 Cargar carrito desde una orden activa (SIN loops ni titileo)
   const setCartFromOrden = (platosOrdenados = []) => {
-    localStorage.removeItem('talanquera_cart');
-    
+    isHydratingFromOrden.current = true;
+
     const reconstruido = platosOrdenados.map(p => ({
       lineId: p._key || crypto.randomUUID(),
       _id: p._id || p.nombrePlato,
@@ -81,6 +88,11 @@ export function CartProvider({ children }) {
 
     console.log('✅ [CartContext] MESA CARGADA:', reconstruido);
     setItems(reconstruido);
+
+    // 🔐 CLAVE SENIOR: liberar el lock después del render
+    setTimeout(() => {
+      isHydratingFromOrden.current = false;
+    }, 0);
   };
 
   const actualizarComentario = (lineId, comentario) => {
@@ -95,12 +107,17 @@ export function CartProvider({ children }) {
     setItems(prev => {
       const idx = prev.findIndex(i => i.lineId === lineId);
       if (idx === -1) return prev;
+
       const copy = [...prev];
       if (copy[idx].cantidad <= 1) {
         copy.splice(idx, 1);
       } else {
-        copy[idx] = { ...copy[idx], cantidad: copy[idx].cantidad - 1 };
+        copy[idx] = {
+          ...copy[idx],
+          cantidad: copy[idx].cantidad - 1
+        };
       }
+
       return copy;
     });
   };
@@ -113,36 +130,39 @@ export function CartProvider({ children }) {
     localStorage.removeItem('talanquera_mesa');
   };
 
-  // 🧮 CÁLCULO DEL TOTAL BLINDADO
+  // 🧮 TOTAL BLINDADO
   const total = useMemo(() => {
-    const subtotalProductos = items.reduce((s, it) => s + (it.precioNum * it.cantidad), 0);
-    
-    // Si la propina es manual (-1), ignoramos porcentajes y sumamos el monto puro
+    const subtotalProductos = items.reduce(
+      (s, it) => s + it.precioNum * it.cantidad,
+      0
+    );
+
     if (propina === -1) {
       return subtotalProductos + Number(montoManual);
     }
-    
-    const valorPropinaPorcentaje = subtotalProductos * (propina / 100);
-    return subtotalProductos + valorPropinaPorcentaje;
+
+    return subtotalProductos + subtotalProductos * (propina / 100);
   }, [items, propina, montoManual]);
 
   return (
-    <CartContext.Provider value={{
-      items,
-      addProduct,
-      setCartFromOrden,
-      decrease,
-      clear,
-      total,
-      metodoPago,
-      setMetodoPago,
-      propina,
-      setPropina,
-      montoManual,
-      setMontoManual,
-      actualizarComentario,
-      cleanPrice: cleanPrice
-    }}>
+    <CartContext.Provider
+      value={{
+        items,
+        addProduct,
+        setCartFromOrden,
+        decrease,
+        clear,
+        total,
+        metodoPago,
+        setMetodoPago,
+        propina,
+        setPropina,
+        montoManual,
+        setMontoManual,
+        actualizarComentario,
+        cleanPrice
+      }}
+    >
       {children}
     </CartContext.Provider>
   );

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 
 export function useOrdenHandlers({
@@ -18,12 +18,11 @@ export function useOrdenHandlers({
 }) {
     const [ordenActivaId, setOrdenActivaId] = useState(null);
     const [ordenMesa, setOrdenMesa] = useState(null);
-
-    // ✅ Rastreador de productos ya enviados (IDs)
     const [productosYaImpresos, setProductosYaImpresos] = useState([]);
-
-    // 🔒 Candado anti doble acción
     const [estaGuardando, setEstaGuardando] = useState(false);
+
+    // 🛡️ Candado absoluto de transiciones
+    const lockRef = useRef(false);
 
     const router = useRouter();
 
@@ -42,6 +41,9 @@ export function useOrdenHandlers({
     // CARGAR ORDEN EXISTENTE
     // ==============================
     const cargarOrden = async (id) => {
+        if (lockRef.current) return false;
+        lockRef.current = true;
+
         try {
             const res = await fetch('/api/ordenes/get', {
                 method: 'POST',
@@ -56,6 +58,7 @@ export function useOrdenHandlers({
                 setOrdenActivaId(o._id);
                 setOrdenMesa(o.mesa);
                 setNombreMesero(o.mesero || (esModoCajero ? 'Caja' : null));
+
                 setCartFromOrden(o.platosOrdenados);
 
                 const idsExistentes = o.platosOrdenados.map(
@@ -68,6 +71,8 @@ export function useOrdenHandlers({
             }
         } catch (e) {
             console.error('❌ Error carga orden:', e);
+        } finally {
+            lockRef.current = false;
         }
         return false;
     };
@@ -76,7 +81,7 @@ export function useOrdenHandlers({
     // GUARDAR ORDEN (COCINA)
     // ==============================
     const guardarOrden = async () => {
-        if (cart.length === 0 || estaGuardando) return;
+        if (cart.length === 0 || estaGuardando || lockRef.current) return;
 
         const mesaDefault = esModoCajero ? 'Mostrador' : 'Mesa 1';
         const mesaIngresada = ordenMesa || prompt('Mesa o Cliente:', mesaDefault);
@@ -105,6 +110,7 @@ export function useOrdenHandlers({
 
         try {
             setEstaGuardando(true);
+            lockRef.current = true;
 
             const esAdicion = ordenActivaId && productosYaImpresos.length > 0;
             const listaIgnorar = productosYaImpresos.join(',');
@@ -125,11 +131,7 @@ export function useOrdenHandlers({
 
             const idParaTicket = res?._id || res?.ordenId;
 
-            setOrdenActivaId(null);
-            setOrdenMesa(null);
-            setProductosYaImpresos([]);
-            clearCart();
-            if (!esModoCajero) setNombreMesero(null);
+            resetOrdenActual();
             setMostrarCarritoMobile(false);
 
             await refreshOrdenes();
@@ -146,7 +148,7 @@ export function useOrdenHandlers({
                         'width=100,height=100,left=0,top=0'
                     );
                     if (win) window.focus();
-                }, 100);
+                }, 150);
 
                 alert(
                     esAdicion
@@ -160,6 +162,7 @@ export function useOrdenHandlers({
             alert('❌ Error al guardar.');
         } finally {
             setEstaGuardando(false);
+            lockRef.current = false;
         }
     };
 
@@ -167,7 +170,12 @@ export function useOrdenHandlers({
     // COBRAR ORDEN (CAJA)
     // ==============================
     const cobrarOrden = async (metodoPago) => {
-        if (cart.length === 0 || !esModoCajero || estaGuardando) {
+        if (
+            cart.length === 0 ||
+            !esModoCajero ||
+            estaGuardando ||
+            lockRef.current
+        ) {
             return { ventaExitosa: false };
         }
 
@@ -183,6 +191,7 @@ export function useOrdenHandlers({
 
         try {
             setEstaGuardando(true);
+            lockRef.current = true;
 
             const res = await fetch('/api/ventas', {
                 method: 'POST',
@@ -209,10 +218,7 @@ export function useOrdenHandlers({
 
             if (ordenActivaId) await apiEliminar(ordenActivaId);
 
-            clearCart();
-            setOrdenActivaId(null);
-            setOrdenMesa(null);
-            setProductosYaImpresos([]);
+            resetOrdenActual();
             await refreshOrdenes();
 
             if (ventaGuardada?._id) {
@@ -226,12 +232,11 @@ export function useOrdenHandlers({
                         'width=100,height=100,left=0,top=0'
                     );
                     if (win) window.focus();
-                }, 100);
+                }, 150);
 
                 alert('✅ VENTA REALIZADA CON ÉXITO');
             }
 
-            // ✅ RESULTADO EXPLÍCITO
             return {
                 ventaExitosa: true,
                 ventaId: ventaGuardada?._id || null
@@ -243,6 +248,7 @@ export function useOrdenHandlers({
             return { ventaExitosa: false };
         } finally {
             setEstaGuardando(false);
+            lockRef.current = false;
         }
     };
 
@@ -250,7 +256,7 @@ export function useOrdenHandlers({
     // CANCELAR ORDEN
     // ==============================
     const cancelarOrden = async () => {
-        if (!ordenActivaId || estaGuardando) return;
+        if (!ordenActivaId || estaGuardando || lockRef.current) return;
 
         if (!esModoCajero) {
             alert('🔒 PIN de Cajero requerido.');
@@ -263,16 +269,20 @@ export function useOrdenHandlers({
 
         try {
             setEstaGuardando(true);
+            lockRef.current = true;
+
             await apiEliminar(ordenActivaId);
             resetOrdenActual();
             await refreshOrdenes();
             setMostrarCarritoMobile(false);
             alert('🗑️ Orden eliminada correctamente.');
+
         } catch (error) {
             console.error(error);
             alert('❌ Error al eliminar.');
         } finally {
             setEstaGuardando(false);
+            lockRef.current = false;
         }
     };
 
