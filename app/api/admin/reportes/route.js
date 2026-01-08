@@ -31,10 +31,14 @@ export async function POST(request) {
             );
         }
 
-        const inicio = fechaInicio;
-        const fin = fechaFin;
+        // 🕛 2. NORMALIZACIÓN DE FECHAS (CORTE REAL A MEDIANOCHE - COLOMBIA)
+        const inicio = new Date(fechaInicio);
+        inicio.setHours(0, 0, 0, 0); // 12:00 AM
 
-        // 2. Consulta de Ventas (BLINDADA + COMPATIBLE CON VENTAS ANTIGUAS)
+        const fin = new Date(fechaFin);
+        fin.setHours(23, 59, 59, 999); // 11:59:59 PM
+
+        // 3. Consulta de Ventas (BLINDADA + COMPATIBLE CON VENTAS ANTIGUAS)
         const queryVentas = `*[_type == "venta" && (
             (fecha >= $inicio && fecha <= $fin) ||
             (_createdAt >= $inicio && _createdAt <= $fin)
@@ -48,7 +52,7 @@ export async function POST(request) {
             _createdAt
         }`;
 
-        // 3. Consulta de Gastos
+        // 4. Consulta de Gastos
         const queryGastos = `*[_type == "gasto" && (
             fecha >= $inicio && fecha <= $fin
         )]{
@@ -62,7 +66,7 @@ export async function POST(request) {
             sanityClientServer.fetch(queryGastos, { inicio, fin }, { useCdn: false })
         ]);
 
-        // 📊 4. PROCESAMIENTO ESTRATÉGICO PARA EL DUEÑO
+        // 📊 5. PROCESAMIENTO ESTRATÉGICO PARA EL DUEÑO
         const metodosPago = { efectivo: 0, tarjeta: 0, digital: 0 };
         const rankingPlatos = {};
         let totalPropinas = 0;

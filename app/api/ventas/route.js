@@ -8,29 +8,41 @@ export const revalidate = 0;
 export async function POST(req) {
     try {
         const payload = await req.json();
-        
+
         const mesa = payload.mesa || 'General';
         const mesero = payload.mesero || 'Personal General';
         const metodoPago = payload.metodoPago || 'efectivo';
         const totalPagado = Number(payload.totalPagado) || 0;
-        const propinaRecaudada = Number(payload.propinaRecaudada) || 0; // 👈 Capturamos la propina
+        const propinaRecaudada = Number(payload.propinaRecaudada) || 0;
         const ordenId = payload.ordenId;
 
+        // 🕒 FECHA REAL COLOMBIA (CORTE A MEDIANOCHE)
+        const nowColombia = new Date(
+            new Date().toLocaleString('en-US', { timeZone: 'America/Bogota' })
+        );
+
         // --- FOLIO PROFESIONAL (TAL-AAMMDD-XXXX) ---
-        const now = new Date();
-        const datePart = now.toISOString().slice(2, 10).replace(/-/g, ''); 
-        const randomPart = crypto.randomBytes(2).toString('hex').toUpperCase();
+        const datePart = nowColombia
+            .toISOString()
+            .slice(2, 10)
+            .replace(/-/g, '');
+
+        const randomPart = crypto
+            .randomBytes(2)
+            .toString('hex')
+            .toUpperCase();
+
         const folioGenerado = `TAL-${datePart}-${randomPart}`;
 
         // --- MAPEO DE PLATOS VENDIDOS ---
         const platosVenta = (payload.platosVendidosV2 || []).map(item => ({
-            _key: crypto.randomUUID(), 
+            _key: crypto.randomUUID(),
             _type: 'platoVendidoV2',
             nombrePlato: item.nombrePlato,
             cantidad: Number(item.cantidad) || 1,
             precioUnitario: Number(item.precioUnitario) || 0,
             subtotal: Number(item.subtotal) || 0,
-            comentario: item.comentario || "" 
+            comentario: item.comentario || ""
         }));
 
         const objetoVenta = {
@@ -39,15 +51,16 @@ export async function POST(req) {
             mesa: mesa,
             mesero: mesero,
             metodoPago: metodoPago,
-            totalPagado: totalPagado, // Venta neta
-            propinaRecaudada: propinaRecaudada, // 👈 Se guarda como campo independiente
-            fecha: now.toISOString(), 
+            totalPagado: totalPagado,
+            propinaRecaudada: propinaRecaudada,
+            fecha: nowColombia.toISOString(), // ✅ FECHA CORREGIDA
             platosVendidosV2: platosVenta,
         };
 
         // --- TRANSACCIÓN ATÓMICA ---
-        // 1. Crea la venta. 2. Si venía de una mesa guardada, la elimina de 'ordenesActivas'.
-        let transaction = sanityClientServer.transaction().create(objetoVenta);
+        let transaction = sanityClientServer
+            .transaction()
+            .create(objetoVenta);
 
         if (ordenId) {
             transaction = transaction.delete(ordenId);
@@ -55,18 +68,18 @@ export async function POST(req) {
 
         await transaction.commit();
 
-        return NextResponse.json({ 
-            ok: true, 
+        return NextResponse.json({
+            ok: true,
             message: 'Venta registrada y mesa liberada',
             folio: folioGenerado
         }, { status: 201 });
 
     } catch (err) {
         console.error('🔥 [FATAL_ERROR_VENTAS]:', err);
-        return NextResponse.json({ 
-            ok: false, 
+        return NextResponse.json({
+            ok: false,
             error: 'Error en la transacción',
-            details: err.message 
+            details: err.message
         }, { status: 500 });
     }
 }
